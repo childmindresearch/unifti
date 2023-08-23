@@ -1,0 +1,3 @@
+[submodule "BrainParsers"]
+	path = BrainParsers
+	url = https://github.com/cmi-dair/BrainParsers.git
