@@ -5,6 +5,7 @@ import yaml
 import pathlib as pl
 import argparse
 import re
+from . import utils
 
 PATH_ROOT = pl.Path(__file__).parent.parent
 PATH_DIST = PATH_ROOT / "src"
@@ -13,6 +14,7 @@ PATH_NIFTI_KSY = PATH_ROOT / 'BrainParsers' / 'formats' / 'nifti.ksy'
 
 C_VERSION = 1
 C_PREFIX = 'cnifti'
+C_PREFIX_UP = C_PREFIX.upper()
 
 C_INDENT = '  '
 
@@ -268,6 +270,8 @@ def build_struct(buf: CHeaderBuilder, ksy: dict, name: str, enum_backref: dict, 
         for tok in comp_expr_tokens:
             if tok in [f['id'] for f in ksy['seq']]:
                 cexpr += f't_{name}->{tok}'
+            elif utils.is_int_literal(tok):
+                cexpr += str(utils.int_literal(tok))
             else:
                 cexpr += tok
             cexpr += ' '
@@ -290,7 +294,7 @@ def build_print_struct(buf: CHeaderBuilder, ksy: dict, name: str, enum_unknown =
 
     printf_alias = f'{C_PREFIX}_printf'.upper()
     if printf_alias not in buf.header:
-        buf.header += f'\n\n#ifndef {printf_alias}\n#define {printf_alias} printf\n#endif\n\n'
+        buf.header += f'\n\n#ifndef {printf_alias}\n#include <stdio.h>\n#define {printf_alias} printf\n#endif\n\n'
 
     printn1 = CPrintfBuilder(printf=printf_alias)
     print_dict = {}
@@ -346,8 +350,6 @@ def build_print_struct(buf: CHeaderBuilder, ksy: dict, name: str, enum_unknown =
     
     buf.impl += f'\n}}\n\n'
 
-    buf.impl_header += '#include <stdio.h>\n'
-
     buf.body += docstring(brief=f'Print {name}') + '\n'
     buf.body += f'{cfunc_signature};\n\n'
 
@@ -382,26 +384,26 @@ def build_byteswap_struct(buf: CHeaderBuilder, ksy: dict, name: str):
 
 def build_n1header():
     buf = CHeaderBuilder(
-        header_guard_name=f'{C_PREFIX.upper()}_HEADER_H', 
+        header_guard_name=f'{C_PREFIX_UP}_HEADER_H', 
         header_name=f'{C_PREFIX}'
     )
 
     buf.header += f"""\n\n
 #if __STDC_VERSION__ >= 201112L
 #include <assert.h>
-#define {C_PREFIX.upper()}_STATIC_ASSERT(COND,MSG) static_assert(COND,MSG)
+#define {C_PREFIX_UP}_STATIC_ASSERT(COND,MSG) static_assert(COND,MSG)
 #else
-#define {C_PREFIX.upper()}_STATIC_ASSERT(COND,MSG)
+#define {C_PREFIX_UP}_STATIC_ASSERT(COND,MSG)
 #endif""".strip()
     
-    buf.header += "\n\n#include <stdint.h>"
+    buf.header += "\n\n#include <stddef.h>\n#include <stdint.h>\n#include <stdbool.h>"
 
     
 
     # code generation
 
     buf.body += f'/** @brief {C_PREFIX} version */\n'
-    buf.body += f'#define {C_PREFIX.upper()}_VERSION {C_VERSION}\n\n'
+    buf.body += f'#define {C_PREFIX_UP}_VERSION {C_VERSION}\n\n'
 
 
     ksy = load_ksy(PATH_NIFTI_KSY)
@@ -450,7 +452,7 @@ def build_n1header():
         
         bytesize = bitsize // 8
 
-        buf.body += f'#define {C_PREFIX.upper()}_DT_{enum_name.upper()}_SIZE {bytesize}\n'
+        buf.body += f'#define {C_PREFIX_UP}_DT_{enum_name.upper()}_SIZE {bytesize}\n'
 
     buf.body += f'\n'
         
@@ -465,7 +467,7 @@ def build_n1header():
         name='n1_header',
         enum_backref=enum_backref
     )
-    buf.body += f'{C_PREFIX.upper()}_STATIC_ASSERT(sizeof({cstruct_header_n1}) == 348, "nifti1 header size is not 348 bytes");\n'
+    buf.body += f'{C_PREFIX_UP}_STATIC_ASSERT(sizeof({cstruct_header_n1}) == 348, "nifti1 header size is not 348 bytes");\n'
     
     # nifti 2 header definition
     cstruct_header_n2 = build_struct(
@@ -475,7 +477,7 @@ def build_n1header():
         enum_backref=enum_backref,
         memory_packing=True
     )
-    buf.body += f'{C_PREFIX.upper()}_STATIC_ASSERT(sizeof({cstruct_header_n2}) == 540, "nifti2 header size is not 540 bytes");\n'
+    buf.body += f'{C_PREFIX_UP}_STATIC_ASSERT(sizeof({cstruct_header_n2}) == 540, "nifti2 header size is not 540 bytes");\n'
 
     buf.body += f'\n'
 
@@ -490,7 +492,7 @@ def build_n1header():
     
     buf.body += f'\n'
     buf.body += comment(f'Implementation') + '\n'
-    buf.body += f'#ifndef {C_PREFIX.upper()}_HEADER_ONLY\n\n'
+    buf.body += f'#ifndef {C_PREFIX_UP}_HEADER_ONLY\n\n'
 
     buf.impl += comment(f'Implementation') + '\n\n'
 
@@ -500,7 +502,7 @@ def build_n1header():
     buf.impl += f'int32_t {C_PREFIX}_dt_size(int32_t dt) {{\n'
     buf.impl += f'{C_INDENT}switch (dt) {{\n'
     for enum_name in ksy['enums']['dt'].values():
-        buf.impl += f'{C_INDENT}{C_INDENT}case {C_PREFIX.upper()}_DT_{enum_name.upper()}: return {C_PREFIX.upper()}_DT_{enum_name.upper()}_SIZE;\n'
+        buf.impl += f'{C_INDENT}{C_INDENT}case {C_PREFIX_UP}_DT_{enum_name.upper()}: return {C_PREFIX_UP}_DT_{enum_name.upper()}_SIZE;\n'
     buf.impl += f'{C_INDENT}{C_INDENT}default: return 0;\n'
     buf.impl += f'{C_INDENT}}}\n'
     buf.impl += f'}}\n\n'
@@ -531,26 +533,33 @@ def build_n1header():
 
     # peek
 
-
-    buf.header += f'\n#include <stdbool.h>\n'
-
     def swap32(i: int) -> int:
         return struct.unpack("<I", struct.pack(">I", i))[0]
 
-    buf.body += f'#define {C_PREFIX.upper()}_PEEK_NIFTI2 {0b01}\n'
-    buf.body += f'#define {C_PREFIX.upper()}_PEEK_SWAP {0b10}\n'
+    buf.body += f'#define {C_PREFIX_UP}_PEEK_NIFTI2 {0b01}\n'
+    buf.body += f'#define {C_PREFIX_UP}_PEEK_SWAP {0b10}\n'
     buf.body += docstring(brief=f'Peek at first 4 bytes of header to determine nifti version and endianness.\n'
-                          f'Return value can be bit compared with {C_PREFIX.upper()}_PEEK_* values.\n'
+                          f'Return value can be bit compared with {C_PREFIX_UP}_PEEK_* values.\n'
                           f'If return value is -1 this is not a nifti header.') + '\n'
     buf.body += f'static inline int32_t {C_PREFIX}_peek(const uint32_t t_header_start) {{\n'
     buf.body += f'{C_INDENT}switch (t_header_start) {{\n'
     buf.body += f'{C_INDENT}{C_INDENT}case 348: return 0;\n'
-    buf.body += f'{C_INDENT}{C_INDENT}case {swap32(348)}: return {C_PREFIX.upper()}_PEEK_SWAP;\n'
-    buf.body += f'{C_INDENT}{C_INDENT}case 540: return {C_PREFIX.upper()}_PEEK_NIFTI2;\n'
-    buf.body += f'{C_INDENT}{C_INDENT}case {swap32(540)}: return {C_PREFIX.upper()}_PEEK_NIFTI2 & {C_PREFIX.upper()}_PEEK_SWAP;\n'
+    buf.body += f'{C_INDENT}{C_INDENT}case {swap32(348)}: return {C_PREFIX_UP}_PEEK_SWAP;\n'
+    buf.body += f'{C_INDENT}{C_INDENT}case 540: return {C_PREFIX_UP}_PEEK_NIFTI2;\n'
+    buf.body += f'{C_INDENT}{C_INDENT}case {swap32(540)}: return {C_PREFIX_UP}_PEEK_NIFTI2 & {C_PREFIX_UP}_PEEK_SWAP;\n'
     buf.body += f'{C_INDENT}{C_INDENT}default: return -1;\n'
     buf.body += f'{C_INDENT}}}\n'
     buf.body += f'}}\n\n'
+
+    """
+    Untested potentially faster version with perfect hashing (but less file validity guarantees):
+    
+static inline int32_t cnifti_peek_fast(const uint32_t t_header_start) {
+  static int32_t lookup[7] = { -1, CNIFTI_PEEK_NIFTI2, -1, CNIFTI_PEEK_SWAP, CNIFTI_PEEK_NIFTI2 & CNIFTI_PEEK_SWAP, 0, -1};
+  return lookup[t_header_start % 7];
+}
+
+    """
 
     # Byte-swap
 
@@ -578,7 +587,7 @@ def build_n1header():
         buf.body += f'}}\n\n'
 
     
-    buf.body += f'#endif /* {C_PREFIX.upper()}_HEADER_ONLY */\n'
+    buf.body += f'#endif /* {C_PREFIX_UP}_HEADER_ONLY */\n'
 
     return buf
 

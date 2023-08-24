@@ -3,8 +3,6 @@
 #include "cnifti.h"
 
 #include <string.h>
-#include <stdio.h>
-#include <stdio.h>
 
 
 #include "endianness.h"

@@ -14,14 +14,15 @@ extern "C" {
 #define CNIFTI_STATIC_ASSERT(COND,MSG)
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef CNIFTI_PRINTF
+#include <stdio.h>
 #define CNIFTI_PRINTF printf
 #endif
 
-
-#include <stdbool.h>
 
 
 /** @brief cnifti version */
@@ -735,19 +736,19 @@ typedef struct {
 /* Computed n1_header fields */
 
 /** @brief frequency_dim computed header field */
-inline int32_t cnifti_n1_header_frequency_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info & 0b11; }
+inline int32_t cnifti_n1_header_frequency_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info & 3; }
 
 /** @brief phase_dim computed header field */
-inline int32_t cnifti_n1_header_phase_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info >> 2 & 0b11; }
+inline int32_t cnifti_n1_header_phase_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info >> 2 & 3; }
 
 /** @brief slice_dim computed header field */
-inline int32_t cnifti_n1_header_slice_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info >> 4 & 0b11; }
+inline int32_t cnifti_n1_header_slice_dim(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->dim_info >> 4 & 3; }
 
 /** @brief spatial_units computed header field */
-inline int32_t cnifti_n1_header_spatial_units(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->xyzt_units & 0b111; }
+inline int32_t cnifti_n1_header_spatial_units(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->xyzt_units & 7; }
 
 /** @brief temporal_units computed header field */
-inline int32_t cnifti_n1_header_temporal_units(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->xyzt_units & 0b111000; }
+inline int32_t cnifti_n1_header_temporal_units(const cnifti_n1_header_t *t_n1_header) { return t_n1_header->xyzt_units & 56; }
 
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_n1_header_t) == 348, "nifti1 header size is not 348 bytes");
 // Disable alignment for this struct
@@ -835,19 +836,19 @@ typedef struct {
 /* Computed n2_header fields */
 
 /** @brief frequency_dim computed header field */
-inline int32_t cnifti_n2_header_frequency_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info & 0b11; }
+inline int32_t cnifti_n2_header_frequency_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info & 3; }
 
 /** @brief phase_dim computed header field */
-inline int32_t cnifti_n2_header_phase_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info >> 2 & 0b11; }
+inline int32_t cnifti_n2_header_phase_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info >> 2 & 3; }
 
 /** @brief slice_dim computed header field */
-inline int32_t cnifti_n2_header_slice_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info >> 4 & 0b11; }
+inline int32_t cnifti_n2_header_slice_dim(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->dim_info >> 4 & 3; }
 
 /** @brief spatial_units computed header field */
-inline int32_t cnifti_n2_header_spatial_units(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->xyzt_units & 0b111; }
+inline int32_t cnifti_n2_header_spatial_units(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->xyzt_units & 7; }
 
 /** @brief temporal_units computed header field */
-inline int32_t cnifti_n2_header_temporal_units(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->xyzt_units & 0b111000; }
+inline int32_t cnifti_n2_header_temporal_units(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->xyzt_units & 56; }
 
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_n2_header_t) == 540, "nifti2 header size is not 540 bytes");
 
