@@ -7,13 +7,13 @@
 extern "C" {
 #endif
 
+
 #if __STDC_VERSION__ >= 201112L
 #include <assert.h>
 #define CNIFTI_STATIC_ASSERT(COND,MSG) static_assert(COND,MSG)
 #else
 #define CNIFTI_STATIC_ASSERT(COND,MSG)
 #endif
-
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -25,46 +25,45 @@ extern "C" {
 
 
 
+
 /** @brief cnifti version */
-#define CNIFTI_VERSION 1
+#define CNIFTI_VERSION 1/* Begin: dt */
 
-/* Begin: dt */
-
-/** @brief dt: unknown */
+/** @brief dt::unknown */
 #define CNIFTI_DT_UNKNOWN 0
-/** @brief dt: binary */
+/** @brief dt::binary */
 #define CNIFTI_DT_BINARY 1
-/** @brief dt: uint8 */
+/** @brief dt::uint8 */
 #define CNIFTI_DT_UINT8 2
-/** @brief dt: int16 */
+/** @brief dt::int16 */
 #define CNIFTI_DT_INT16 4
-/** @brief dt: int32 */
+/** @brief dt::int32 */
 #define CNIFTI_DT_INT32 8
-/** @brief dt: float32 */
+/** @brief dt::float32 */
 #define CNIFTI_DT_FLOAT32 16
-/** @brief dt: complex64 */
+/** @brief dt::complex64 */
 #define CNIFTI_DT_COMPLEX64 32
-/** @brief dt: float64 */
+/** @brief dt::float64 */
 #define CNIFTI_DT_FLOAT64 64
-/** @brief dt: rgb24 */
+/** @brief dt::rgb24 */
 #define CNIFTI_DT_RGB24 128
-/** @brief dt: int8 */
+/** @brief dt::int8 */
 #define CNIFTI_DT_INT8 256
-/** @brief dt: unit16 */
+/** @brief dt::unit16 */
 #define CNIFTI_DT_UNIT16 512
-/** @brief dt: uint32 */
+/** @brief dt::uint32 */
 #define CNIFTI_DT_UINT32 768
-/** @brief dt: int64 */
+/** @brief dt::int64 */
 #define CNIFTI_DT_INT64 1024
-/** @brief dt: uint64 */
+/** @brief dt::uint64 */
 #define CNIFTI_DT_UINT64 1280
-/** @brief dt: float128 */
+/** @brief dt::float128 */
 #define CNIFTI_DT_FLOAT128 1536
-/** @brief dt: complex128 */
+/** @brief dt::complex128 */
 #define CNIFTI_DT_COMPLEX128 1792
-/** @brief dt: complex256 */
+/** @brief dt::complex256 */
 #define CNIFTI_DT_COMPLEX256 2048
-/** @brief dt: rgba32 */
+/** @brief dt::rgba32 */
 #define CNIFTI_DT_RGBA32 2304
 /** @brief dt unknown name */
 #define CNIFTI_DT_UNKNOWN_NAME "unknown"
@@ -107,99 +106,99 @@ extern "C" {
 
 /* Begin: intent */
 
-/** @brief intent: none */
+/** @brief intent::none */
 #define CNIFTI_INTENT_NONE 0
-/** @brief intent: correl */
+/** @brief intent::correl */
 #define CNIFTI_INTENT_CORREL 2
-/** @brief intent: ttest */
+/** @brief intent::ttest */
 #define CNIFTI_INTENT_TTEST 3
-/** @brief intent: ftest */
+/** @brief intent::ftest */
 #define CNIFTI_INTENT_FTEST 4
-/** @brief intent: zscore */
+/** @brief intent::zscore */
 #define CNIFTI_INTENT_ZSCORE 5
-/** @brief intent: chisq */
+/** @brief intent::chisq */
 #define CNIFTI_INTENT_CHISQ 6
-/** @brief intent: beta */
+/** @brief intent::beta */
 #define CNIFTI_INTENT_BETA 7
-/** @brief intent: binom */
+/** @brief intent::binom */
 #define CNIFTI_INTENT_BINOM 8
-/** @brief intent: gamma */
+/** @brief intent::gamma */
 #define CNIFTI_INTENT_GAMMA 9
-/** @brief intent: poisson */
+/** @brief intent::poisson */
 #define CNIFTI_INTENT_POISSON 10
-/** @brief intent: normal */
+/** @brief intent::normal */
 #define CNIFTI_INTENT_NORMAL 11
-/** @brief intent: ftest_nonc */
+/** @brief intent::ftest_nonc */
 #define CNIFTI_INTENT_FTEST_NONC 12
-/** @brief intent: chisq_nonc */
+/** @brief intent::chisq_nonc */
 #define CNIFTI_INTENT_CHISQ_NONC 13
-/** @brief intent: logistic */
+/** @brief intent::logistic */
 #define CNIFTI_INTENT_LOGISTIC 14
-/** @brief intent: laplace */
+/** @brief intent::laplace */
 #define CNIFTI_INTENT_LAPLACE 15
-/** @brief intent: uniform */
+/** @brief intent::uniform */
 #define CNIFTI_INTENT_UNIFORM 16
-/** @brief intent: ttest_nonc */
+/** @brief intent::ttest_nonc */
 #define CNIFTI_INTENT_TTEST_NONC 17
-/** @brief intent: weibull */
+/** @brief intent::weibull */
 #define CNIFTI_INTENT_WEIBULL 18
-/** @brief intent: chi */
+/** @brief intent::chi */
 #define CNIFTI_INTENT_CHI 19
-/** @brief intent: invgauss */
+/** @brief intent::invgauss */
 #define CNIFTI_INTENT_INVGAUSS 20
-/** @brief intent: extval */
+/** @brief intent::extval */
 #define CNIFTI_INTENT_EXTVAL 21
-/** @brief intent: pval */
+/** @brief intent::pval */
 #define CNIFTI_INTENT_PVAL 22
-/** @brief intent: logpval */
+/** @brief intent::logpval */
 #define CNIFTI_INTENT_LOGPVAL 23
-/** @brief intent: log10pval */
+/** @brief intent::log10pval */
 #define CNIFTI_INTENT_LOG10PVAL 24
-/** @brief intent: estimate */
+/** @brief intent::estimate */
 #define CNIFTI_INTENT_ESTIMATE 1001
-/** @brief intent: label */
+/** @brief intent::label */
 #define CNIFTI_INTENT_LABEL 1002
-/** @brief intent: neuroname */
+/** @brief intent::neuroname */
 #define CNIFTI_INTENT_NEURONAME 1003
-/** @brief intent: genmatrix */
+/** @brief intent::genmatrix */
 #define CNIFTI_INTENT_GENMATRIX 1004
-/** @brief intent: symmatrix */
+/** @brief intent::symmatrix */
 #define CNIFTI_INTENT_SYMMATRIX 1005
-/** @brief intent: dispvect */
+/** @brief intent::dispvect */
 #define CNIFTI_INTENT_DISPVECT 1006
-/** @brief intent: vector */
+/** @brief intent::vector */
 #define CNIFTI_INTENT_VECTOR 1007
-/** @brief intent: pointset */
+/** @brief intent::pointset */
 #define CNIFTI_INTENT_POINTSET 1008
-/** @brief intent: triangle */
+/** @brief intent::triangle */
 #define CNIFTI_INTENT_TRIANGLE 1009
-/** @brief intent: quaternion */
+/** @brief intent::quaternion */
 #define CNIFTI_INTENT_QUATERNION 1010
-/** @brief intent: dimless */
+/** @brief intent::dimless */
 #define CNIFTI_INTENT_DIMLESS 1011
-/** @brief intent: time_series */
+/** @brief intent::time_series */
 #define CNIFTI_INTENT_TIME_SERIES 2001
-/** @brief intent: node_index */
+/** @brief intent::node_index */
 #define CNIFTI_INTENT_NODE_INDEX 2002
-/** @brief intent: rgb_vector */
+/** @brief intent::rgb_vector */
 #define CNIFTI_INTENT_RGB_VECTOR 2003
-/** @brief intent: rgba_vector */
+/** @brief intent::rgba_vector */
 #define CNIFTI_INTENT_RGBA_VECTOR 2004
-/** @brief intent: shape */
+/** @brief intent::shape */
 #define CNIFTI_INTENT_SHAPE 2005
-/** @brief intent: fsl_fnirt_displacement_field */
+/** @brief intent::fsl_fnirt_displacement_field */
 #define CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD 2006
-/** @brief intent: fsl_cubic_spline_coefficients */
+/** @brief intent::fsl_cubic_spline_coefficients */
 #define CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS 2007
-/** @brief intent: fsl_dct_coefficients */
+/** @brief intent::fsl_dct_coefficients */
 #define CNIFTI_INTENT_FSL_DCT_COEFFICIENTS 2008
-/** @brief intent: fsl_quadratic_spline_coefficients */
+/** @brief intent::fsl_quadratic_spline_coefficients */
 #define CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS 2009
-/** @brief intent: fsl_topup_cubic_spline_coefficients */
+/** @brief intent::fsl_topup_cubic_spline_coefficients */
 #define CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS 2016
-/** @brief intent: fsl_topup_quadratic_spline_coefficients */
+/** @brief intent::fsl_topup_quadratic_spline_coefficients */
 #define CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS 2017
-/** @brief intent: fsl_topup_field */
+/** @brief intent::fsl_topup_field */
 #define CNIFTI_INTENT_FSL_TOPUP_FIELD 2018
 /** @brief intent none name */
 #define CNIFTI_INTENT_NONE_NAME "none"
@@ -300,17 +299,17 @@ extern "C" {
 
 /* Begin: xform */
 
-/** @brief xform: unknown */
+/** @brief Arbitrary coordinates. (xform::unknown) */
 #define CNIFTI_XFORM_UNKNOWN 0
-/** @brief xform: scanner_anat */
+/** @brief Scanner-based anatomical coordinates. (xform::scanner_anat) */
 #define CNIFTI_XFORM_SCANNER_ANAT 1
-/** @brief xform: aligned_anat */
+/** @brief Coordinates aligned to another file's, or to the anatomical "truth" (with an arbitrary coordinate center). (xform::aligned_anat) */
 #define CNIFTI_XFORM_ALIGNED_ANAT 2
-/** @brief xform: talairach */
+/** @brief Coordinates aligned to the Talairach space. (xform::talairach) */
 #define CNIFTI_XFORM_TALAIRACH 3
-/** @brief xform: mni_152 */
+/** @brief Coordinates aligned to the MNI152 space. (xform::mni_152) */
 #define CNIFTI_XFORM_MNI_152 4
-/** @brief xform: template_other */
+/** @brief Coordinates aligned to some template that is not MNI152 or Talairach. (xform::template_other) */
 #define CNIFTI_XFORM_TEMPLATE_OTHER 5
 /** @brief xform unknown name */
 #define CNIFTI_XFORM_UNKNOWN_NAME "unknown"
@@ -329,25 +328,25 @@ extern "C" {
 
 /* Begin: units */
 
-/** @brief units: unknown */
+/** @brief Unknown units (units::unknown) */
 #define CNIFTI_UNITS_UNKNOWN 0
-/** @brief units: meter */
+/** @brief Meter (m) (units::meter) */
 #define CNIFTI_UNITS_METER 1
-/** @brief units: mm */
+/** @brief Millimeter (mm) (units::mm) */
 #define CNIFTI_UNITS_MM 2
-/** @brief units: micron */
+/** @brief Micron (um) (units::micron) */
 #define CNIFTI_UNITS_MICRON 3
-/** @brief units: sec */
+/** @brief Seconds (s) (units::sec) */
 #define CNIFTI_UNITS_SEC 8
-/** @brief units: msec */
+/** @brief Miliseconds (ms) (units::msec) */
 #define CNIFTI_UNITS_MSEC 16
-/** @brief units: usec */
+/** @brief Microseconds (us) (units::usec) */
 #define CNIFTI_UNITS_USEC 24
-/** @brief units: hz */
+/** @brief Hertz (Hz) (units::hz) */
 #define CNIFTI_UNITS_HZ 32
-/** @brief units: ppm */
+/** @brief Parts-per-million (ppm) (units::ppm) */
 #define CNIFTI_UNITS_PPM 40
-/** @brief units: rads */
+/** @brief Radians per second (rad/s) (units::rads) */
 #define CNIFTI_UNITS_RADS 48
 /** @brief units unknown name */
 #define CNIFTI_UNITS_UNKNOWN_NAME "unknown"
@@ -374,19 +373,19 @@ extern "C" {
 
 /* Begin: slice */
 
-/** @brief slice: unknown */
+/** @brief Slice order: Unknown (slice::unknown) */
 #define CNIFTI_SLICE_UNKNOWN 0
-/** @brief slice: seq_inc */
+/** @brief Slice order: Sequential, increasing (slice::seq_inc) */
 #define CNIFTI_SLICE_SEQ_INC 1
-/** @brief slice: seq_dec */
+/** @brief Slice order: Sequential, decreasing (slice::seq_dec) */
 #define CNIFTI_SLICE_SEQ_DEC 2
-/** @brief slice: alt_inc */
+/** @brief Slice order: Interleaved, increasing, starting at the first slice (slice::alt_inc) */
 #define CNIFTI_SLICE_ALT_INC 3
-/** @brief slice: alt_dec */
+/** @brief Slice order: Interleaved, decreasing, starting at the last slice (slice::alt_dec) */
 #define CNIFTI_SLICE_ALT_DEC 4
-/** @brief slice: alt_inc2 */
+/** @brief Slice order: Interleaved, increasing, starting at the second slice (slice::alt_inc2) */
 #define CNIFTI_SLICE_ALT_INC2 5
-/** @brief slice: alt_dec2 */
+/** @brief Slice order: Interleaved, decreasing, starting at the second to last slice (slice::alt_dec2) */
 #define CNIFTI_SLICE_ALT_DEC2 6
 /** @brief slice unknown name */
 #define CNIFTI_SLICE_UNKNOWN_NAME "unknown"
@@ -407,153 +406,99 @@ extern "C" {
 
 /* Begin: ecode */
 
-/** @brief ecode: ignore */
+/** @brief ecode::ignore */
 #define CNIFTI_ECODE_IGNORE 0
-/**
- * @brief ecode: "dicom"
- * 
- * intended for raw DICOM attributes
- */
+/** @brief intended for raw DICOM attributes (ecode::dicom) */
 #define CNIFTI_ECODE_DICOM 2
 /**
- * @brief ecode: "afni"
- * 
- * Robert W Cox: rwcox\@nih.gov
+ * @brief Robert W Cox: rwcox\@nih.gov
  * https://afni.nimh.nih.gov/afni
- * 
+ *  (ecode::afni)
  */
 #define CNIFTI_ECODE_AFNI 4
-/**
- * @brief ecode: "comment"
- * 
- * plain ASCII text only
- */
+/** @brief plain ASCII text only (ecode::comment) */
 #define CNIFTI_ECODE_COMMENT 6
 /**
- * @brief ecode: "xcede"
- * 
- * David B Keator: dbkeator\@uci.edu
+ * @brief David B Keator: dbkeator\@uci.edu
  * http://www.nbirn.net/Resources/Users/Applications/xcede/index.htm
- * 
+ *  (ecode::xcede)
  */
 #define CNIFTI_ECODE_XCEDE 8
 /**
- * @brief ecode: "jimdiminfo"
- * 
- * Mark A Horsfield
+ * @brief Mark A Horsfield
  * mah5\@leicester.ac.uk
- * 
+ *  (ecode::jimdiminfo)
  */
 #define CNIFTI_ECODE_JIMDIMINFO 10
 /**
- * @brief ecode: "workflow_fwds"
- * 
- * Kate Fissell: fissell\@pitt.edu
+ * @brief Kate Fissell: fissell\@pitt.edu
  * http://kraepelin.wpic.pitt.edu/~fissell/NIFTI_ECODE_WORKFLOW_FWDS/NIFTI_ECODE_WORKFLOW_FWDS.html
- * 
+ *  (ecode::workflow_fwds)
  */
 #define CNIFTI_ECODE_WORKFLOW_FWDS 12
-/**
- * @brief ecode: "freesurfer"
- * 
- * http://surfer.nmr.mgh.harvard.edu/
- */
+/** @brief http://surfer.nmr.mgh.harvard.edu/ (ecode::freesurfer) */
 #define CNIFTI_ECODE_FREESURFER 14
-/**
- * @brief ecode: "pypickle"
- * 
- * embedded Python objects
- */
+/** @brief embedded Python objects (ecode::pypickle) */
 #define CNIFTI_ECODE_PYPICKLE 16
 /**
- * @brief ecode: "mind_ident"
- * 
- * LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
+ * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- * 
+ *  (ecode::mind_ident)
  */
 #define CNIFTI_ECODE_MIND_IDENT 18
 /**
- * @brief ecode: "b_value"
- * 
- * LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
+ * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- * 
+ *  (ecode::b_value)
  */
 #define CNIFTI_ECODE_B_VALUE 20
 /**
- * @brief ecode: "spherical_direction"
- * 
- * LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
+ * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- * 
+ *  (ecode::spherical_direction)
  */
 #define CNIFTI_ECODE_SPHERICAL_DIRECTION 22
 /**
- * @brief ecode: "dt_component"
- * 
- * LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
+ * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- * 
+ *  (ecode::dt_component)
  */
 #define CNIFTI_ECODE_DT_COMPONENT 24
 /**
- * @brief ecode: "shc_degreeorder"
- * 
- * LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
+ * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- * 
+ *  (ecode::shc_degreeorder)
  */
 #define CNIFTI_ECODE_SHC_DEGREEORDER 26
-/**
- * @brief ecode: "voxbo"
- * 
- * Dan Kimberg: www.voxbo.org
- */
+/** @brief Dan Kimberg: www.voxbo.org (ecode::voxbo) */
 #define CNIFTI_ECODE_VOXBO 28
 /**
- * @brief ecode: "caret"
- * 
- * John Harwell: john\@brainvis.wustl.edu
+ * @brief John Harwell: john\@brainvis.wustl.edu
  * http://brainvis.wustl.edu/wiki/index.php/Caret:Documentation:CaretNiftiExtension
- * 
+ *  (ecode::caret)
  */
 #define CNIFTI_ECODE_CARET 30
-/**
- * @brief ecode: "cifti"
- * 
- * CIFTI-2_Main_FINAL_1March2014.pdf
- */
+/** @brief CIFTI-2_Main_FINAL_1March2014.pdf (ecode::cifti) */
 #define CNIFTI_ECODE_CIFTI 32
-/** @brief ecode: variable_frame_timing */
+/** @brief ecode::variable_frame_timing */
 #define CNIFTI_ECODE_VARIABLE_FRAME_TIMING 34
-/**
- * @brief ecode: "eval"
- * 
- * Munster University Hospital
- */
+/** @brief Munster University Hospital (ecode::eval) */
 #define CNIFTI_ECODE_EVAL 38
 /**
- * @brief ecode: "matlab"
- * 
- * MATLAB extension
+ * @brief MATLAB extension
  * http://www.mathworks.com/matlabcentral/fileexchange/42997-dicom-to-nifti-converter
- * 
+ *  (ecode::matlab)
  */
 #define CNIFTI_ECODE_MATLAB 40
 /**
- * @brief ecode: "quantiphyse"
- * 
- * Quantiphyse extension
+ * @brief Quantiphyse extension
  * https://quantiphyse.readthedocs.io/en/latest/advanced/nifti_extension.html
- * 
+ *  (ecode::quantiphyse)
  */
 #define CNIFTI_ECODE_QUANTIPHYSE 42
 /**
- * @brief ecode: "mrs"
- * 
- * Magnetic Resonance Spectroscopy (MRS)        
- * 
+ * @brief Magnetic Resonance Spectroscopy (MRS)
+ *  (ecode::mrs)
  */
 #define CNIFTI_ECODE_MRS 44
 /** @brief ecode ignore name */
@@ -851,6 +796,18 @@ inline int32_t cnifti_n2_header_spatial_units(const cnifti_n2_header_t *t_n2_hea
 inline int32_t cnifti_n2_header_temporal_units(const cnifti_n2_header_t *t_n2_header) { return t_n2_header->xyzt_units & 56; }
 
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_n2_header_t) == 540, "nifti2 header size is not 540 bytes");
+typedef struct {
+  int8_t has_extension;
+  uint8_t padding[3];
+} cnifti_extension_indicator_t;
+
+CNIFTI_STATIC_ASSERT(sizeof(cnifti_extension_indicator_t) == 4, "extension header size is not 4 bytes");
+typedef struct {
+  int32_t esize;
+  int32_t ecode;
+} cnifti_extension_header_t;
+
+CNIFTI_STATIC_ASSERT(sizeof(cnifti_extension_header_t) == 8, "extension header size is not 8 bytes");
 
 /** @brief Nifti header union */
 typedef union cnifti_header_t {
@@ -907,6 +864,7 @@ void cnifti_n1_header_print(const cnifti_n1_header_t* t_n1_header);
 /** @brief Print n2_header */
 void cnifti_n2_header_print(const cnifti_n2_header_t* t_n2_header);
 
+
 #define CNIFTI_PEEK_NIFTI2 1
 #define CNIFTI_PEEK_SWAP 2
 /**
@@ -922,13 +880,12 @@ static inline int32_t cnifti_peek(const uint32_t t_header_start) {
     case 469893120: return CNIFTI_PEEK_NIFTI2 & CNIFTI_PEEK_SWAP;
     default: return -1;
   }
-}
-
-/** @brief Byte-swap n1_header */
+}/** @brief Byte-swap n1_header */
 void cnifti_n1_header_swap(cnifti_n1_header_t* t_n1_header);
 
 /** @brief Byte-swap n2_header */
 void cnifti_n2_header_swap(cnifti_n2_header_t* t_n2_header);
+
 
 /** @brief Calculate n1_header data array size (in bytes). */
 static inline int64_t cnifti_n1_header_array_size(const cnifti_n1_header_t* t_n1_header) {
@@ -936,16 +893,13 @@ static inline int64_t cnifti_n1_header_array_size(const cnifti_n1_header_t* t_n1
   for (int i = 0; i < t_n1_header->dim[0]; ++i) { size *= t_n1_header->dim[i+1]; }
   return size;
 }
-
 /** @brief Calculate n2_header data array size (in bytes). */
 static inline int64_t cnifti_n2_header_array_size(const cnifti_n2_header_t* t_n2_header) {
   int64_t size = t_n2_header->bitpix / 8;
   for (int i = 0; i < t_n2_header->dim[0]; ++i) { size *= t_n2_header->dim[i+1]; }
   return size;
 }
-
 #endif /* CNIFTI_HEADER_ONLY */
-
 
 
 
