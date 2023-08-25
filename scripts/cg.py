@@ -1,7 +1,33 @@
-from typing import Optional
+from typing import List, Optional
 
 
 C_INDENT = "  "
+C_PREFIX = "cnifti"
+C_PREFIX_UP = C_PREFIX.upper()
+
+
+def cn_arg(name: str):
+    return f"t_{name}"
+
+
+def cn_struct_type(name: str):
+    return f"{C_PREFIX}_{name}_t"
+
+
+def cn_enum_value(enum_name: str, enum_var: str):
+    return f"{C_PREFIX}_{enum_name}_{enum_var}".upper()
+
+
+def cn_func_name(name: str):
+    return f"{C_PREFIX}_{name}"
+
+
+def cn_define(name: str):
+    return f"{C_PREFIX}_{name}".upper()
+
+def cdefine(name: str, value: str):
+    return f"#define {cn_define(name)} {value}"
+
 
 def cindent(s: str, indent: int = 1) -> str:
     """Indents s by indent levels."""
@@ -15,11 +41,13 @@ def ensure_linebreak(s: str) -> str:
         return s
     return s + "\n"
 
+
 def ensure_double_linebreak(s: str) -> str:
     """Ensures that s ends with exactly two newlines."""
     if s.endswith("\n\n"):
         return s
     return s + "\n\n"
+
 
 def ensure_linebreak_before(s: str) -> str:
     """Ensures that s starts with exactly one newline."""
@@ -27,11 +55,13 @@ def ensure_linebreak_before(s: str) -> str:
         return s
     return "\n" + s
 
+
 def ensure_double_linebreak_before(s: str) -> str:
     """Ensures that s starts with exactly two newlines."""
     if s.startswith("\n\n"):
         return s
     return "\n\n" + s
+
 
 def section(s: str) -> str:
     """Returns s as a section."""
@@ -46,6 +76,7 @@ def docstring(*args, **kwargs):
     s = "\n".join([docstring_escape(a) for a in args]) + "\n".join(
         [f"@{k} {docstring_escape(v)}" for k, v in kwargs.items() if v is not None]
     )
+    s = s.strip()
 
     if "\n" in s:
         s = s.replace("\n", "\n * ")
@@ -57,11 +88,24 @@ def comment(*args, **kwargs):
     s = "\n".join([docstring_escape(a) for a in args]) + "\n".join(
         [f"{k}: {docstring_escape(v)}" for k, v in kwargs.items() if v is not None]
     )
+    s = s.strip()
 
     if "\n" in s:
         s = s.replace("\n", "\n * ")
         return f"/*\n * {s}\n */"
     return f"/* {s} */"
+
+
+def big_comment(*args, **kwargs):
+    s = "\n".join([docstring_escape(a) for a in args]) + "\n".join(
+        [f"{k}: {docstring_escape(v)}" for k, v in kwargs.items() if v is not None]
+    )
+    s = s.strip()
+
+    if "\n" in s:
+        s = s.replace("\n", " ////\n//// ")
+
+    return f"//// {s} ////"
 
 
 def dostring_quote_code(s: str):
@@ -81,8 +125,8 @@ class CPrintfBuilder:
 
 
 class CHeaderBuilder:
-    def __init__(self, header_guard_name: str, header_name: str):
-        self.header_guard_name = header_guard_name
+    def __init__(self, header_name: str):
+        self.header_guard_name = f"{C_PREFIX_UP}_{header_name}_HEADER_H"
         self.header_name = header_name
         self.header = ""
         self.footer = ""
@@ -139,26 +183,61 @@ class CFunc:
         self.prefix = prefix.strip() if prefix is not None else ""
         self.postfix = postfix.strip() if postfix is not None else ""
 
-    def write(self, buf: CHeaderBuilder, header_only=False) -> str:
+    def write(self, buf: CHeaderBuilder, header_only=True, inline=True) -> str:
+        inline = "inline " if inline else ""
         if header_only:
-            buf.body += section(f"""
+            buf.body += section(
+                f"""
 {self.prefix}
-static inline {self.signature} {{
+static {inline}{self.signature} {{
 {cindent(self.body)}
 }}
 {self.postfix}
-""")
+"""
+            )
         else:
-            buf.body += section(f"""
+            buf.body += section(
+                f"""
 {self.prefix}
-static inline {self.signature};
+{inline}{self.signature};
 {self.postfix}
-""")
-            buf.impl += section(f"""
+"""
+            )
+            buf.impl += section(
+                f"""
 {self.prefix}
-{self.signature} {{
+{inline}{self.signature} {{
 {cindent(self.body)}
 }}
 {self.postfix}
-""")
+"""
+            )
         return buf
+
+
+class CStruct:
+    def __init__(self, name: str, fields: List[str]) -> None:
+        self.name = name
+        self.fields = fields
+
+    def write(self, buf: CHeaderBuilder, memory_packing: bool = False) -> str:
+        fields_str = ";\n".join(self.fields)
+        if memory_packing:
+            buf.header += section(
+                f"""
+#pragma pack(push, 1)
+typedef struct {{
+{cindent(fields_str)}
+}} {cn_struct_type(self.name)};
+#pragma pack(pop)
+"""
+            )
+        else:
+            buf.header += section(
+                f"""
+typedef struct {{
+{cindent(fields_str)}
+}} {cn_struct_type(self.name)};
+"""
+            )
+            
