@@ -3,7 +3,7 @@
 ## MVP
 
 - [x] Complete kaitai grammar
-- [ ] Check for and extract extension data
+- [x] Check for and extract extension data
 - [ ] Access/stream data array ?
   - [ ] -> Probably just give the user utils for byte swapping chunks and to calculate offsets
 
