@@ -24,7 +24,86 @@ extern "C" {
 #include <stdint.h> // int32_t, uint32_t, int64_t, uint64_t
 #include <stdbool.h> // bool
 #include <string.h> // memcpy, strcmp
-typedef struct {
+/** @brief version */
+#define CNIFTI_VERSION 1
+/* Define byte-swap functions, using fast processor-native built-ins where possible */
+#if defined(_MSC_VER) // needs to be first because msvc doesn't short-circuit after failing defined(__has_builtin)
+#  define bswap16(x)     _byteswap_ushort((x))
+#  define bswap32(x)     _byteswap_ulong((x))
+#  define bswap64(x)     _byteswap_uint64((x))
+#elif (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
+#  define bswap16(x)     __builtin_bswap16((x))
+#  define bswap32(x)     __builtin_bswap32((x))
+#  define bswap64(x)     __builtin_bswap64((x))
+#elif defined(__has_builtin) && __has_builtin(__builtin_bswap64)  /* for clang; gcc 5 fails on this and && shortcircuit fails; must be after GCC check */
+#  define bswap16(x)     __builtin_bswap16((x))
+#  define bswap32(x)     __builtin_bswap32((x))
+#  define bswap64(x)     __builtin_bswap64((x))
+#else
+    /* even in this case, compilers often optimize by using native instructions */
+    static inline uint16_t bswap16(uint16_t x) {
+		return ((( x  >> 8 ) & 0xffu ) | (( x  & 0xffu ) << 8 ));
+	}
+    static inline uint32_t bswap32(uint32_t x) {
+        return ((( x & 0xff000000u ) >> 24 ) |
+                (( x & 0x00ff0000u ) >> 8  ) |
+                (( x & 0x0000ff00u ) << 8  ) |
+                (( x & 0x000000ffu ) << 24 ));
+    }
+    static inline uint64_t bswap64(uint64_t x) {
+        return ((( x & 0xff00000000000000ull ) >> 56 ) |
+                (( x & 0x00ff000000000000ull ) >> 40 ) |
+                (( x & 0x0000ff0000000000ull ) >> 24 ) |
+                (( x & 0x000000ff00000000ull ) >> 8  ) |
+                (( x & 0x00000000ff000000ull ) << 8  ) |
+                (( x & 0x0000000000ff0000ull ) << 24 ) |
+                (( x & 0x000000000000ff00ull ) << 40 ) |
+                (( x & 0x00000000000000ffull ) << 56 ));
+    }
+#endif
+
+//! Byte-swap 32-bit float
+static inline float bswapf(float f) {
+#ifdef __cplusplus
+    static_assert(sizeof(float) == sizeof(uint32_t), "Unexpected float format");
+    /* Problem: de-referencing float pointer as uint32_t breaks strict-aliasing rules for C++ and C, even if it normally works
+     *   uint32_t val = bswap32(*(reinterpret_cast<const uint32_t *>(&f)));
+     *   return *(reinterpret_cast<float *>(&val));
+     */
+    // memcpy approach is guaranteed to work in C & C++ and fn calls should be optimized out:
+    uint32_t asInt;
+    std::memcpy(&asInt, reinterpret_cast<const void *>(&f), sizeof(uint32_t));
+    asInt = bswap32(asInt);
+    std::memcpy(&f, reinterpret_cast<void *>(&asInt), sizeof(float));
+    return f;
+#else
+    CNIFTI_STATIC_ASSERT(sizeof(float) == sizeof(uint32_t), "Unexpected float format");
+    // union approach is guaranteed to work in C99 and later (but not in C++, though in practice it normally will):
+    union { uint32_t asInt; float asFloat; } conversion_union;
+    conversion_union.asFloat = f;
+    conversion_union.asInt = bswap32(conversion_union.asInt);
+    return conversion_union.asFloat;
+#endif
+}
+
+//! Byte-swap 64-bit double
+static inline double bswapd(double d) {
+#ifdef __cplusplus
+    static_assert(sizeof(double) == sizeof(uint64_t), "Unexpected double format");
+    uint64_t asInt;
+    std::memcpy(&asInt, reinterpret_cast<const void *>(&d), sizeof(uint64_t));
+    asInt = bswap64(asInt);
+    std::memcpy(&d, reinterpret_cast<void *>(&asInt), sizeof(double));
+    return d;
+#else
+    CNIFTI_STATIC_ASSERT(sizeof(double) == sizeof(uint64_t), "Unexpected double format");
+    union { uint64_t asInt; double asDouble; } conversion_union;
+    conversion_union.asDouble = d;
+    conversion_union.asInt = bswap64(conversion_union.asInt);
+    return conversion_union.asDouble;
+#endif
+}
+typedef struct cnifti_n1_header_t {
   /** Must be 348. */
   int32_t sizeof_hdr;
   /** Unused. */
@@ -110,10 +189,10 @@ typedef struct {
   /** 'name' or meaning of data. */
   char intent_name[16];
   /** MUST be "ni1\\0" or "n+1\\0". */
-  char magic[4]
+  char magic[4];
 } cnifti_n1_header_t;
 #pragma pack(push, 1)
-typedef struct {
+typedef struct cnifti_n2_header_t {
   /** Must be 540. */
   int32_t sizeof_hdr;
   /** MUST be 'ni2\0' or 'n+2\0'. */
@@ -189,853 +268,865 @@ typedef struct {
   /** MRI slice ordering. */
   int8_t dim_info;
   /** unused, filled with \0 */
-  char unused_str[15]
+  char unused_str[15];
 } cnifti_n2_header_t;
 #pragma pack(pop)
-typedef struct {
+typedef struct cnifti_extension_indicator_t {
   /**  */
   int8_t has_extension;
   /**  */
-  uint8_t padding
+  uint8_t padding[3];
 } cnifti_extension_indicator_t;
-typedef struct {
+typedef struct cnifti_extension_header_t {
   /**  */
   int32_t esize;
   /**  */
-  int32_t ecode
+  int32_t ecode;
 } cnifti_extension_header_t;
 
-
-/** @brief version */
-#define CNIFTI_VERSION 1//// Enum dt ////
-/** @brief unknown::unknown */
-#define CNIFTI_UNKNOWN_0 0
-/** @brief binary::binary */
-#define CNIFTI_BINARY_1 1
-/** @brief uint8::uint8 */
-#define CNIFTI_UINT8_2 2
-/** @brief int16::int16 */
-#define CNIFTI_INT16_4 4
-/** @brief int32::int32 */
-#define CNIFTI_INT32_8 8
-/** @brief float32::float32 */
-#define CNIFTI_FLOAT32_16 16
-/** @brief complex64::complex64 */
-#define CNIFTI_COMPLEX64_32 32
-/** @brief float64::float64 */
-#define CNIFTI_FLOAT64_64 64
-/** @brief rgb24::rgb24 */
-#define CNIFTI_RGB24_128 128
-/** @brief int8::int8 */
-#define CNIFTI_INT8_256 256
-/** @brief unit16::unit16 */
-#define CNIFTI_UNIT16_512 512
-/** @brief uint32::uint32 */
-#define CNIFTI_UINT32_768 768
-/** @brief int64::int64 */
-#define CNIFTI_INT64_1024 1024
-/** @brief uint64::uint64 */
-#define CNIFTI_UINT64_1280 1280
-/** @brief float128::float128 */
-#define CNIFTI_FLOAT128_1536 1536
-/** @brief complex128::complex128 */
-#define CNIFTI_COMPLEX128_1792 1792
-/** @brief complex256::complex256 */
-#define CNIFTI_COMPLEX256_2048 2048
-/** @brief rgba32::rgba32 */
-#define CNIFTI_RGBA32_2304 2304
-/** @brief unknown::unknown name string */
-#define CNIFTI_UNKNOWN_0_STR "unknown"
-/** @brief binary::binary name string */
-#define CNIFTI_BINARY_1_STR "binary"
-/** @brief uint8::uint8 name string */
-#define CNIFTI_UINT8_2_STR "uint8"
-/** @brief int16::int16 name string */
-#define CNIFTI_INT16_4_STR "int16"
-/** @brief int32::int32 name string */
-#define CNIFTI_INT32_8_STR "int32"
-/** @brief float32::float32 name string */
-#define CNIFTI_FLOAT32_16_STR "float32"
-/** @brief complex64::complex64 name string */
-#define CNIFTI_COMPLEX64_32_STR "complex64"
-/** @brief float64::float64 name string */
-#define CNIFTI_FLOAT64_64_STR "float64"
-/** @brief rgb24::rgb24 name string */
-#define CNIFTI_RGB24_128_STR "rgb24"
-/** @brief int8::int8 name string */
-#define CNIFTI_INT8_256_STR "int8"
-/** @brief unit16::unit16 name string */
-#define CNIFTI_UNIT16_512_STR "unit16"
-/** @brief uint32::uint32 name string */
-#define CNIFTI_UINT32_768_STR "uint32"
-/** @brief int64::int64 name string */
-#define CNIFTI_INT64_1024_STR "int64"
-/** @brief uint64::uint64 name string */
-#define CNIFTI_UINT64_1280_STR "uint64"
-/** @brief float128::float128 name string */
-#define CNIFTI_FLOAT128_1536_STR "float128"
-/** @brief complex128::complex128 name string */
-#define CNIFTI_COMPLEX128_1792_STR "complex128"
-/** @brief complex256::complex256 name string */
-#define CNIFTI_COMPLEX256_2048_STR "complex256"
-/** @brief rgba32::rgba32 name string */
-#define CNIFTI_RGBA32_2304_STR "rgba32"
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// Enum dt ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief dt::unknown */
+#define CNIFTI_DT_UNKNOWN 0
+/** @brief dt::binary */
+#define CNIFTI_DT_BINARY 1
+/** @brief dt::uint8 */
+#define CNIFTI_DT_UINT8 2
+/** @brief dt::int16 */
+#define CNIFTI_DT_INT16 4
+/** @brief dt::int32 */
+#define CNIFTI_DT_INT32 8
+/** @brief dt::float32 */
+#define CNIFTI_DT_FLOAT32 16
+/** @brief dt::complex64 */
+#define CNIFTI_DT_COMPLEX64 32
+/** @brief dt::float64 */
+#define CNIFTI_DT_FLOAT64 64
+/** @brief dt::rgb24 */
+#define CNIFTI_DT_RGB24 128
+/** @brief dt::int8 */
+#define CNIFTI_DT_INT8 256
+/** @brief dt::unit16 */
+#define CNIFTI_DT_UNIT16 512
+/** @brief dt::uint32 */
+#define CNIFTI_DT_UINT32 768
+/** @brief dt::int64 */
+#define CNIFTI_DT_INT64 1024
+/** @brief dt::uint64 */
+#define CNIFTI_DT_UINT64 1280
+/** @brief dt::float128 */
+#define CNIFTI_DT_FLOAT128 1536
+/** @brief dt::complex128 */
+#define CNIFTI_DT_COMPLEX128 1792
+/** @brief dt::complex256 */
+#define CNIFTI_DT_COMPLEX256 2048
+/** @brief dt::rgba32 */
+#define CNIFTI_DT_RGBA32 2304
+/** @brief dt::unknown name string */
+#define CNIFTI_DT_UNKNOWN_STR "unknown"
+/** @brief dt::binary name string */
+#define CNIFTI_DT_BINARY_STR "binary"
+/** @brief dt::uint8 name string */
+#define CNIFTI_DT_UINT8_STR "uint8"
+/** @brief dt::int16 name string */
+#define CNIFTI_DT_INT16_STR "int16"
+/** @brief dt::int32 name string */
+#define CNIFTI_DT_INT32_STR "int32"
+/** @brief dt::float32 name string */
+#define CNIFTI_DT_FLOAT32_STR "float32"
+/** @brief dt::complex64 name string */
+#define CNIFTI_DT_COMPLEX64_STR "complex64"
+/** @brief dt::float64 name string */
+#define CNIFTI_DT_FLOAT64_STR "float64"
+/** @brief dt::rgb24 name string */
+#define CNIFTI_DT_RGB24_STR "rgb24"
+/** @brief dt::int8 name string */
+#define CNIFTI_DT_INT8_STR "int8"
+/** @brief dt::unit16 name string */
+#define CNIFTI_DT_UNIT16_STR "unit16"
+/** @brief dt::uint32 name string */
+#define CNIFTI_DT_UINT32_STR "uint32"
+/** @brief dt::int64 name string */
+#define CNIFTI_DT_INT64_STR "int64"
+/** @brief dt::uint64 name string */
+#define CNIFTI_DT_UINT64_STR "uint64"
+/** @brief dt::float128 name string */
+#define CNIFTI_DT_FLOAT128_STR "float128"
+/** @brief dt::complex128 name string */
+#define CNIFTI_DT_COMPLEX128_STR "complex128"
+/** @brief dt::complex256 name string */
+#define CNIFTI_DT_COMPLEX256_STR "complex256"
+/** @brief dt::rgba32 name string */
+#define CNIFTI_DT_RGBA32_STR "rgba32"
 
 /* Returns the name of the dt value. */
 static inline const char *cnifti_dt_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_UNKNOWN_0: return CNIFTI_UNKNOWN_0_STR;
-    case CNIFTI_BINARY_1: return CNIFTI_BINARY_1_STR;
-    case CNIFTI_UINT8_2: return CNIFTI_UINT8_2_STR;
-    case CNIFTI_INT16_4: return CNIFTI_INT16_4_STR;
-    case CNIFTI_INT32_8: return CNIFTI_INT32_8_STR;
-    case CNIFTI_FLOAT32_16: return CNIFTI_FLOAT32_16_STR;
-    case CNIFTI_COMPLEX64_32: return CNIFTI_COMPLEX64_32_STR;
-    case CNIFTI_FLOAT64_64: return CNIFTI_FLOAT64_64_STR;
-    case CNIFTI_RGB24_128: return CNIFTI_RGB24_128_STR;
-    case CNIFTI_INT8_256: return CNIFTI_INT8_256_STR;
-    case CNIFTI_UNIT16_512: return CNIFTI_UNIT16_512_STR;
-    case CNIFTI_UINT32_768: return CNIFTI_UINT32_768_STR;
-    case CNIFTI_INT64_1024: return CNIFTI_INT64_1024_STR;
-    case CNIFTI_UINT64_1280: return CNIFTI_UINT64_1280_STR;
-    case CNIFTI_FLOAT128_1536: return CNIFTI_FLOAT128_1536_STR;
-    case CNIFTI_COMPLEX128_1792: return CNIFTI_COMPLEX128_1792_STR;
-    case CNIFTI_COMPLEX256_2048: return CNIFTI_COMPLEX256_2048_STR;
-    case CNIFTI_RGBA32_2304: return CNIFTI_RGBA32_2304_STR;
+    case CNIFTI_DT_UNKNOWN: return CNIFTI_DT_UNKNOWN_STR;
+    case CNIFTI_DT_BINARY: return CNIFTI_DT_BINARY_STR;
+    case CNIFTI_DT_UINT8: return CNIFTI_DT_UINT8_STR;
+    case CNIFTI_DT_INT16: return CNIFTI_DT_INT16_STR;
+    case CNIFTI_DT_INT32: return CNIFTI_DT_INT32_STR;
+    case CNIFTI_DT_FLOAT32: return CNIFTI_DT_FLOAT32_STR;
+    case CNIFTI_DT_COMPLEX64: return CNIFTI_DT_COMPLEX64_STR;
+    case CNIFTI_DT_FLOAT64: return CNIFTI_DT_FLOAT64_STR;
+    case CNIFTI_DT_RGB24: return CNIFTI_DT_RGB24_STR;
+    case CNIFTI_DT_INT8: return CNIFTI_DT_INT8_STR;
+    case CNIFTI_DT_UNIT16: return CNIFTI_DT_UNIT16_STR;
+    case CNIFTI_DT_UINT32: return CNIFTI_DT_UINT32_STR;
+    case CNIFTI_DT_INT64: return CNIFTI_DT_INT64_STR;
+    case CNIFTI_DT_UINT64: return CNIFTI_DT_UINT64_STR;
+    case CNIFTI_DT_FLOAT128: return CNIFTI_DT_FLOAT128_STR;
+    case CNIFTI_DT_COMPLEX128: return CNIFTI_DT_COMPLEX128_STR;
+    case CNIFTI_DT_COMPLEX256: return CNIFTI_DT_COMPLEX256_STR;
+    case CNIFTI_DT_RGBA32: return CNIFTI_DT_RGBA32_STR;
   default: return NULL;
   }
 }
 /* Returns the dt value from its name. */
 static inline int32_t cnifti_dt_from_name(const char *t_dt) {
   if (t_dt == NULL) return -1;
-  if (strcmp(t_dt, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_dt, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_dt, CNIFTI_BINARY_1_STR) == 0) return CNIFTI_BINARY_1;
-    else if (strcmp(t_dt, CNIFTI_UINT8_2_STR) == 0) return CNIFTI_UINT8_2;
-    else if (strcmp(t_dt, CNIFTI_INT16_4_STR) == 0) return CNIFTI_INT16_4;
-    else if (strcmp(t_dt, CNIFTI_INT32_8_STR) == 0) return CNIFTI_INT32_8;
-    else if (strcmp(t_dt, CNIFTI_FLOAT32_16_STR) == 0) return CNIFTI_FLOAT32_16;
-    else if (strcmp(t_dt, CNIFTI_COMPLEX64_32_STR) == 0) return CNIFTI_COMPLEX64_32;
-    else if (strcmp(t_dt, CNIFTI_FLOAT64_64_STR) == 0) return CNIFTI_FLOAT64_64;
-    else if (strcmp(t_dt, CNIFTI_RGB24_128_STR) == 0) return CNIFTI_RGB24_128;
-    else if (strcmp(t_dt, CNIFTI_INT8_256_STR) == 0) return CNIFTI_INT8_256;
-    else if (strcmp(t_dt, CNIFTI_UNIT16_512_STR) == 0) return CNIFTI_UNIT16_512;
-    else if (strcmp(t_dt, CNIFTI_UINT32_768_STR) == 0) return CNIFTI_UINT32_768;
-    else if (strcmp(t_dt, CNIFTI_INT64_1024_STR) == 0) return CNIFTI_INT64_1024;
-    else if (strcmp(t_dt, CNIFTI_UINT64_1280_STR) == 0) return CNIFTI_UINT64_1280;
-    else if (strcmp(t_dt, CNIFTI_FLOAT128_1536_STR) == 0) return CNIFTI_FLOAT128_1536;
-    else if (strcmp(t_dt, CNIFTI_COMPLEX128_1792_STR) == 0) return CNIFTI_COMPLEX128_1792;
-    else if (strcmp(t_dt, CNIFTI_COMPLEX256_2048_STR) == 0) return CNIFTI_COMPLEX256_2048;
-    else if (strcmp(t_dt, CNIFTI_RGBA32_2304_STR) == 0) return CNIFTI_RGBA32_2304;
+  if (strcmp(t_dt, CNIFTI_DT_UNKNOWN_STR) == 0) return CNIFTI_DT_UNKNOWN;
+    else if (strcmp(t_dt, CNIFTI_DT_UNKNOWN_STR) == 0) return CNIFTI_DT_UNKNOWN;
+    else if (strcmp(t_dt, CNIFTI_DT_BINARY_STR) == 0) return CNIFTI_DT_BINARY;
+    else if (strcmp(t_dt, CNIFTI_DT_UINT8_STR) == 0) return CNIFTI_DT_UINT8;
+    else if (strcmp(t_dt, CNIFTI_DT_INT16_STR) == 0) return CNIFTI_DT_INT16;
+    else if (strcmp(t_dt, CNIFTI_DT_INT32_STR) == 0) return CNIFTI_DT_INT32;
+    else if (strcmp(t_dt, CNIFTI_DT_FLOAT32_STR) == 0) return CNIFTI_DT_FLOAT32;
+    else if (strcmp(t_dt, CNIFTI_DT_COMPLEX64_STR) == 0) return CNIFTI_DT_COMPLEX64;
+    else if (strcmp(t_dt, CNIFTI_DT_FLOAT64_STR) == 0) return CNIFTI_DT_FLOAT64;
+    else if (strcmp(t_dt, CNIFTI_DT_RGB24_STR) == 0) return CNIFTI_DT_RGB24;
+    else if (strcmp(t_dt, CNIFTI_DT_INT8_STR) == 0) return CNIFTI_DT_INT8;
+    else if (strcmp(t_dt, CNIFTI_DT_UNIT16_STR) == 0) return CNIFTI_DT_UNIT16;
+    else if (strcmp(t_dt, CNIFTI_DT_UINT32_STR) == 0) return CNIFTI_DT_UINT32;
+    else if (strcmp(t_dt, CNIFTI_DT_INT64_STR) == 0) return CNIFTI_DT_INT64;
+    else if (strcmp(t_dt, CNIFTI_DT_UINT64_STR) == 0) return CNIFTI_DT_UINT64;
+    else if (strcmp(t_dt, CNIFTI_DT_FLOAT128_STR) == 0) return CNIFTI_DT_FLOAT128;
+    else if (strcmp(t_dt, CNIFTI_DT_COMPLEX128_STR) == 0) return CNIFTI_DT_COMPLEX128;
+    else if (strcmp(t_dt, CNIFTI_DT_COMPLEX256_STR) == 0) return CNIFTI_DT_COMPLEX256;
+    else if (strcmp(t_dt, CNIFTI_DT_RGBA32_STR) == 0) return CNIFTI_DT_RGBA32;
   return -1;
-}//// Enum intent ////
-/** @brief none::none */
-#define CNIFTI_NONE_0 0
-/** @brief correl::correl */
-#define CNIFTI_CORREL_2 2
-/** @brief ttest::ttest */
-#define CNIFTI_TTEST_3 3
-/** @brief ftest::ftest */
-#define CNIFTI_FTEST_4 4
-/** @brief zscore::zscore */
-#define CNIFTI_ZSCORE_5 5
-/** @brief chisq::chisq */
-#define CNIFTI_CHISQ_6 6
-/** @brief beta::beta */
-#define CNIFTI_BETA_7 7
-/** @brief binom::binom */
-#define CNIFTI_BINOM_8 8
-/** @brief gamma::gamma */
-#define CNIFTI_GAMMA_9 9
-/** @brief poisson::poisson */
-#define CNIFTI_POISSON_10 10
-/** @brief normal::normal */
-#define CNIFTI_NORMAL_11 11
-/** @brief ftest_nonc::ftest_nonc */
-#define CNIFTI_FTEST_NONC_12 12
-/** @brief chisq_nonc::chisq_nonc */
-#define CNIFTI_CHISQ_NONC_13 13
-/** @brief logistic::logistic */
-#define CNIFTI_LOGISTIC_14 14
-/** @brief laplace::laplace */
-#define CNIFTI_LAPLACE_15 15
-/** @brief uniform::uniform */
-#define CNIFTI_UNIFORM_16 16
-/** @brief ttest_nonc::ttest_nonc */
-#define CNIFTI_TTEST_NONC_17 17
-/** @brief weibull::weibull */
-#define CNIFTI_WEIBULL_18 18
-/** @brief chi::chi */
-#define CNIFTI_CHI_19 19
-/** @brief invgauss::invgauss */
-#define CNIFTI_INVGAUSS_20 20
-/** @brief extval::extval */
-#define CNIFTI_EXTVAL_21 21
-/** @brief pval::pval */
-#define CNIFTI_PVAL_22 22
-/** @brief logpval::logpval */
-#define CNIFTI_LOGPVAL_23 23
-/** @brief log10pval::log10pval */
-#define CNIFTI_LOG10PVAL_24 24
-/** @brief estimate::estimate */
-#define CNIFTI_ESTIMATE_1001 1001
-/** @brief label::label */
-#define CNIFTI_LABEL_1002 1002
-/** @brief neuroname::neuroname */
-#define CNIFTI_NEURONAME_1003 1003
-/** @brief genmatrix::genmatrix */
-#define CNIFTI_GENMATRIX_1004 1004
-/** @brief symmatrix::symmatrix */
-#define CNIFTI_SYMMATRIX_1005 1005
-/** @brief dispvect::dispvect */
-#define CNIFTI_DISPVECT_1006 1006
-/** @brief vector::vector */
-#define CNIFTI_VECTOR_1007 1007
-/** @brief pointset::pointset */
-#define CNIFTI_POINTSET_1008 1008
-/** @brief triangle::triangle */
-#define CNIFTI_TRIANGLE_1009 1009
-/** @brief quaternion::quaternion */
-#define CNIFTI_QUATERNION_1010 1010
-/** @brief dimless::dimless */
-#define CNIFTI_DIMLESS_1011 1011
-/** @brief time_series::time_series */
-#define CNIFTI_TIME_SERIES_2001 2001
-/** @brief node_index::node_index */
-#define CNIFTI_NODE_INDEX_2002 2002
-/** @brief rgb_vector::rgb_vector */
-#define CNIFTI_RGB_VECTOR_2003 2003
-/** @brief rgba_vector::rgba_vector */
-#define CNIFTI_RGBA_VECTOR_2004 2004
-/** @brief shape::shape */
-#define CNIFTI_SHAPE_2005 2005
-/** @brief fsl_fnirt_displacement_field::fsl_fnirt_displacement_field */
-#define CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006 2006
-/** @brief fsl_cubic_spline_coefficients::fsl_cubic_spline_coefficients */
-#define CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007 2007
-/** @brief fsl_dct_coefficients::fsl_dct_coefficients */
-#define CNIFTI_FSL_DCT_COEFFICIENTS_2008 2008
-/** @brief fsl_quadratic_spline_coefficients::fsl_quadratic_spline_coefficients */
-#define CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009 2009
-/** @brief fsl_topup_cubic_spline_coefficients::fsl_topup_cubic_spline_coefficients */
-#define CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016 2016
-/** @brief fsl_topup_quadratic_spline_coefficients::fsl_topup_quadratic_spline_coefficients */
-#define CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017 2017
-/** @brief fsl_topup_field::fsl_topup_field */
-#define CNIFTI_FSL_TOPUP_FIELD_2018 2018
-/** @brief none::none name string */
-#define CNIFTI_NONE_0_STR "none"
-/** @brief correl::correl name string */
-#define CNIFTI_CORREL_2_STR "correl"
-/** @brief ttest::ttest name string */
-#define CNIFTI_TTEST_3_STR "ttest"
-/** @brief ftest::ftest name string */
-#define CNIFTI_FTEST_4_STR "ftest"
-/** @brief zscore::zscore name string */
-#define CNIFTI_ZSCORE_5_STR "zscore"
-/** @brief chisq::chisq name string */
-#define CNIFTI_CHISQ_6_STR "chisq"
-/** @brief beta::beta name string */
-#define CNIFTI_BETA_7_STR "beta"
-/** @brief binom::binom name string */
-#define CNIFTI_BINOM_8_STR "binom"
-/** @brief gamma::gamma name string */
-#define CNIFTI_GAMMA_9_STR "gamma"
-/** @brief poisson::poisson name string */
-#define CNIFTI_POISSON_10_STR "poisson"
-/** @brief normal::normal name string */
-#define CNIFTI_NORMAL_11_STR "normal"
-/** @brief ftest_nonc::ftest_nonc name string */
-#define CNIFTI_FTEST_NONC_12_STR "ftest_nonc"
-/** @brief chisq_nonc::chisq_nonc name string */
-#define CNIFTI_CHISQ_NONC_13_STR "chisq_nonc"
-/** @brief logistic::logistic name string */
-#define CNIFTI_LOGISTIC_14_STR "logistic"
-/** @brief laplace::laplace name string */
-#define CNIFTI_LAPLACE_15_STR "laplace"
-/** @brief uniform::uniform name string */
-#define CNIFTI_UNIFORM_16_STR "uniform"
-/** @brief ttest_nonc::ttest_nonc name string */
-#define CNIFTI_TTEST_NONC_17_STR "ttest_nonc"
-/** @brief weibull::weibull name string */
-#define CNIFTI_WEIBULL_18_STR "weibull"
-/** @brief chi::chi name string */
-#define CNIFTI_CHI_19_STR "chi"
-/** @brief invgauss::invgauss name string */
-#define CNIFTI_INVGAUSS_20_STR "invgauss"
-/** @brief extval::extval name string */
-#define CNIFTI_EXTVAL_21_STR "extval"
-/** @brief pval::pval name string */
-#define CNIFTI_PVAL_22_STR "pval"
-/** @brief logpval::logpval name string */
-#define CNIFTI_LOGPVAL_23_STR "logpval"
-/** @brief log10pval::log10pval name string */
-#define CNIFTI_LOG10PVAL_24_STR "log10pval"
-/** @brief estimate::estimate name string */
-#define CNIFTI_ESTIMATE_1001_STR "estimate"
-/** @brief label::label name string */
-#define CNIFTI_LABEL_1002_STR "label"
-/** @brief neuroname::neuroname name string */
-#define CNIFTI_NEURONAME_1003_STR "neuroname"
-/** @brief genmatrix::genmatrix name string */
-#define CNIFTI_GENMATRIX_1004_STR "genmatrix"
-/** @brief symmatrix::symmatrix name string */
-#define CNIFTI_SYMMATRIX_1005_STR "symmatrix"
-/** @brief dispvect::dispvect name string */
-#define CNIFTI_DISPVECT_1006_STR "dispvect"
-/** @brief vector::vector name string */
-#define CNIFTI_VECTOR_1007_STR "vector"
-/** @brief pointset::pointset name string */
-#define CNIFTI_POINTSET_1008_STR "pointset"
-/** @brief triangle::triangle name string */
-#define CNIFTI_TRIANGLE_1009_STR "triangle"
-/** @brief quaternion::quaternion name string */
-#define CNIFTI_QUATERNION_1010_STR "quaternion"
-/** @brief dimless::dimless name string */
-#define CNIFTI_DIMLESS_1011_STR "dimless"
-/** @brief time_series::time_series name string */
-#define CNIFTI_TIME_SERIES_2001_STR "time_series"
-/** @brief node_index::node_index name string */
-#define CNIFTI_NODE_INDEX_2002_STR "node_index"
-/** @brief rgb_vector::rgb_vector name string */
-#define CNIFTI_RGB_VECTOR_2003_STR "rgb_vector"
-/** @brief rgba_vector::rgba_vector name string */
-#define CNIFTI_RGBA_VECTOR_2004_STR "rgba_vector"
-/** @brief shape::shape name string */
-#define CNIFTI_SHAPE_2005_STR "shape"
-/** @brief fsl_fnirt_displacement_field::fsl_fnirt_displacement_field name string */
-#define CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006_STR "fsl_fnirt_displacement_field"
-/** @brief fsl_cubic_spline_coefficients::fsl_cubic_spline_coefficients name string */
-#define CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007_STR "fsl_cubic_spline_coefficients"
-/** @brief fsl_dct_coefficients::fsl_dct_coefficients name string */
-#define CNIFTI_FSL_DCT_COEFFICIENTS_2008_STR "fsl_dct_coefficients"
-/** @brief fsl_quadratic_spline_coefficients::fsl_quadratic_spline_coefficients name string */
-#define CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009_STR "fsl_quadratic_spline_coefficients"
-/** @brief fsl_topup_cubic_spline_coefficients::fsl_topup_cubic_spline_coefficients name string */
-#define CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016_STR "fsl_topup_cubic_spline_coefficients"
-/** @brief fsl_topup_quadratic_spline_coefficients::fsl_topup_quadratic_spline_coefficients name string */
-#define CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017_STR "fsl_topup_quadratic_spline_coefficients"
-/** @brief fsl_topup_field::fsl_topup_field name string */
-#define CNIFTI_FSL_TOPUP_FIELD_2018_STR "fsl_topup_field"
+}////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// Enum intent //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief intent::none */
+#define CNIFTI_INTENT_NONE 0
+/** @brief intent::correl */
+#define CNIFTI_INTENT_CORREL 2
+/** @brief intent::ttest */
+#define CNIFTI_INTENT_TTEST 3
+/** @brief intent::ftest */
+#define CNIFTI_INTENT_FTEST 4
+/** @brief intent::zscore */
+#define CNIFTI_INTENT_ZSCORE 5
+/** @brief intent::chisq */
+#define CNIFTI_INTENT_CHISQ 6
+/** @brief intent::beta */
+#define CNIFTI_INTENT_BETA 7
+/** @brief intent::binom */
+#define CNIFTI_INTENT_BINOM 8
+/** @brief intent::gamma */
+#define CNIFTI_INTENT_GAMMA 9
+/** @brief intent::poisson */
+#define CNIFTI_INTENT_POISSON 10
+/** @brief intent::normal */
+#define CNIFTI_INTENT_NORMAL 11
+/** @brief intent::ftest_nonc */
+#define CNIFTI_INTENT_FTEST_NONC 12
+/** @brief intent::chisq_nonc */
+#define CNIFTI_INTENT_CHISQ_NONC 13
+/** @brief intent::logistic */
+#define CNIFTI_INTENT_LOGISTIC 14
+/** @brief intent::laplace */
+#define CNIFTI_INTENT_LAPLACE 15
+/** @brief intent::uniform */
+#define CNIFTI_INTENT_UNIFORM 16
+/** @brief intent::ttest_nonc */
+#define CNIFTI_INTENT_TTEST_NONC 17
+/** @brief intent::weibull */
+#define CNIFTI_INTENT_WEIBULL 18
+/** @brief intent::chi */
+#define CNIFTI_INTENT_CHI 19
+/** @brief intent::invgauss */
+#define CNIFTI_INTENT_INVGAUSS 20
+/** @brief intent::extval */
+#define CNIFTI_INTENT_EXTVAL 21
+/** @brief intent::pval */
+#define CNIFTI_INTENT_PVAL 22
+/** @brief intent::logpval */
+#define CNIFTI_INTENT_LOGPVAL 23
+/** @brief intent::log10pval */
+#define CNIFTI_INTENT_LOG10PVAL 24
+/** @brief intent::estimate */
+#define CNIFTI_INTENT_ESTIMATE 1001
+/** @brief intent::label */
+#define CNIFTI_INTENT_LABEL 1002
+/** @brief intent::neuroname */
+#define CNIFTI_INTENT_NEURONAME 1003
+/** @brief intent::genmatrix */
+#define CNIFTI_INTENT_GENMATRIX 1004
+/** @brief intent::symmatrix */
+#define CNIFTI_INTENT_SYMMATRIX 1005
+/** @brief intent::dispvect */
+#define CNIFTI_INTENT_DISPVECT 1006
+/** @brief intent::vector */
+#define CNIFTI_INTENT_VECTOR 1007
+/** @brief intent::pointset */
+#define CNIFTI_INTENT_POINTSET 1008
+/** @brief intent::triangle */
+#define CNIFTI_INTENT_TRIANGLE 1009
+/** @brief intent::quaternion */
+#define CNIFTI_INTENT_QUATERNION 1010
+/** @brief intent::dimless */
+#define CNIFTI_INTENT_DIMLESS 1011
+/** @brief intent::time_series */
+#define CNIFTI_INTENT_TIME_SERIES 2001
+/** @brief intent::node_index */
+#define CNIFTI_INTENT_NODE_INDEX 2002
+/** @brief intent::rgb_vector */
+#define CNIFTI_INTENT_RGB_VECTOR 2003
+/** @brief intent::rgba_vector */
+#define CNIFTI_INTENT_RGBA_VECTOR 2004
+/** @brief intent::shape */
+#define CNIFTI_INTENT_SHAPE 2005
+/** @brief intent::fsl_fnirt_displacement_field */
+#define CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD 2006
+/** @brief intent::fsl_cubic_spline_coefficients */
+#define CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS 2007
+/** @brief intent::fsl_dct_coefficients */
+#define CNIFTI_INTENT_FSL_DCT_COEFFICIENTS 2008
+/** @brief intent::fsl_quadratic_spline_coefficients */
+#define CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS 2009
+/** @brief intent::fsl_topup_cubic_spline_coefficients */
+#define CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS 2016
+/** @brief intent::fsl_topup_quadratic_spline_coefficients */
+#define CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS 2017
+/** @brief intent::fsl_topup_field */
+#define CNIFTI_INTENT_FSL_TOPUP_FIELD 2018
+/** @brief intent::none name string */
+#define CNIFTI_INTENT_NONE_STR "none"
+/** @brief intent::correl name string */
+#define CNIFTI_INTENT_CORREL_STR "correl"
+/** @brief intent::ttest name string */
+#define CNIFTI_INTENT_TTEST_STR "ttest"
+/** @brief intent::ftest name string */
+#define CNIFTI_INTENT_FTEST_STR "ftest"
+/** @brief intent::zscore name string */
+#define CNIFTI_INTENT_ZSCORE_STR "zscore"
+/** @brief intent::chisq name string */
+#define CNIFTI_INTENT_CHISQ_STR "chisq"
+/** @brief intent::beta name string */
+#define CNIFTI_INTENT_BETA_STR "beta"
+/** @brief intent::binom name string */
+#define CNIFTI_INTENT_BINOM_STR "binom"
+/** @brief intent::gamma name string */
+#define CNIFTI_INTENT_GAMMA_STR "gamma"
+/** @brief intent::poisson name string */
+#define CNIFTI_INTENT_POISSON_STR "poisson"
+/** @brief intent::normal name string */
+#define CNIFTI_INTENT_NORMAL_STR "normal"
+/** @brief intent::ftest_nonc name string */
+#define CNIFTI_INTENT_FTEST_NONC_STR "ftest_nonc"
+/** @brief intent::chisq_nonc name string */
+#define CNIFTI_INTENT_CHISQ_NONC_STR "chisq_nonc"
+/** @brief intent::logistic name string */
+#define CNIFTI_INTENT_LOGISTIC_STR "logistic"
+/** @brief intent::laplace name string */
+#define CNIFTI_INTENT_LAPLACE_STR "laplace"
+/** @brief intent::uniform name string */
+#define CNIFTI_INTENT_UNIFORM_STR "uniform"
+/** @brief intent::ttest_nonc name string */
+#define CNIFTI_INTENT_TTEST_NONC_STR "ttest_nonc"
+/** @brief intent::weibull name string */
+#define CNIFTI_INTENT_WEIBULL_STR "weibull"
+/** @brief intent::chi name string */
+#define CNIFTI_INTENT_CHI_STR "chi"
+/** @brief intent::invgauss name string */
+#define CNIFTI_INTENT_INVGAUSS_STR "invgauss"
+/** @brief intent::extval name string */
+#define CNIFTI_INTENT_EXTVAL_STR "extval"
+/** @brief intent::pval name string */
+#define CNIFTI_INTENT_PVAL_STR "pval"
+/** @brief intent::logpval name string */
+#define CNIFTI_INTENT_LOGPVAL_STR "logpval"
+/** @brief intent::log10pval name string */
+#define CNIFTI_INTENT_LOG10PVAL_STR "log10pval"
+/** @brief intent::estimate name string */
+#define CNIFTI_INTENT_ESTIMATE_STR "estimate"
+/** @brief intent::label name string */
+#define CNIFTI_INTENT_LABEL_STR "label"
+/** @brief intent::neuroname name string */
+#define CNIFTI_INTENT_NEURONAME_STR "neuroname"
+/** @brief intent::genmatrix name string */
+#define CNIFTI_INTENT_GENMATRIX_STR "genmatrix"
+/** @brief intent::symmatrix name string */
+#define CNIFTI_INTENT_SYMMATRIX_STR "symmatrix"
+/** @brief intent::dispvect name string */
+#define CNIFTI_INTENT_DISPVECT_STR "dispvect"
+/** @brief intent::vector name string */
+#define CNIFTI_INTENT_VECTOR_STR "vector"
+/** @brief intent::pointset name string */
+#define CNIFTI_INTENT_POINTSET_STR "pointset"
+/** @brief intent::triangle name string */
+#define CNIFTI_INTENT_TRIANGLE_STR "triangle"
+/** @brief intent::quaternion name string */
+#define CNIFTI_INTENT_QUATERNION_STR "quaternion"
+/** @brief intent::dimless name string */
+#define CNIFTI_INTENT_DIMLESS_STR "dimless"
+/** @brief intent::time_series name string */
+#define CNIFTI_INTENT_TIME_SERIES_STR "time_series"
+/** @brief intent::node_index name string */
+#define CNIFTI_INTENT_NODE_INDEX_STR "node_index"
+/** @brief intent::rgb_vector name string */
+#define CNIFTI_INTENT_RGB_VECTOR_STR "rgb_vector"
+/** @brief intent::rgba_vector name string */
+#define CNIFTI_INTENT_RGBA_VECTOR_STR "rgba_vector"
+/** @brief intent::shape name string */
+#define CNIFTI_INTENT_SHAPE_STR "shape"
+/** @brief intent::fsl_fnirt_displacement_field name string */
+#define CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD_STR "fsl_fnirt_displacement_field"
+/** @brief intent::fsl_cubic_spline_coefficients name string */
+#define CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS_STR "fsl_cubic_spline_coefficients"
+/** @brief intent::fsl_dct_coefficients name string */
+#define CNIFTI_INTENT_FSL_DCT_COEFFICIENTS_STR "fsl_dct_coefficients"
+/** @brief intent::fsl_quadratic_spline_coefficients name string */
+#define CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS_STR "fsl_quadratic_spline_coefficients"
+/** @brief intent::fsl_topup_cubic_spline_coefficients name string */
+#define CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_STR "fsl_topup_cubic_spline_coefficients"
+/** @brief intent::fsl_topup_quadratic_spline_coefficients name string */
+#define CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_STR "fsl_topup_quadratic_spline_coefficients"
+/** @brief intent::fsl_topup_field name string */
+#define CNIFTI_INTENT_FSL_TOPUP_FIELD_STR "fsl_topup_field"
 
 /* Returns the name of the intent value. */
 static inline const char *cnifti_intent_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_NONE_0: return CNIFTI_NONE_0_STR;
-    case CNIFTI_CORREL_2: return CNIFTI_CORREL_2_STR;
-    case CNIFTI_TTEST_3: return CNIFTI_TTEST_3_STR;
-    case CNIFTI_FTEST_4: return CNIFTI_FTEST_4_STR;
-    case CNIFTI_ZSCORE_5: return CNIFTI_ZSCORE_5_STR;
-    case CNIFTI_CHISQ_6: return CNIFTI_CHISQ_6_STR;
-    case CNIFTI_BETA_7: return CNIFTI_BETA_7_STR;
-    case CNIFTI_BINOM_8: return CNIFTI_BINOM_8_STR;
-    case CNIFTI_GAMMA_9: return CNIFTI_GAMMA_9_STR;
-    case CNIFTI_POISSON_10: return CNIFTI_POISSON_10_STR;
-    case CNIFTI_NORMAL_11: return CNIFTI_NORMAL_11_STR;
-    case CNIFTI_FTEST_NONC_12: return CNIFTI_FTEST_NONC_12_STR;
-    case CNIFTI_CHISQ_NONC_13: return CNIFTI_CHISQ_NONC_13_STR;
-    case CNIFTI_LOGISTIC_14: return CNIFTI_LOGISTIC_14_STR;
-    case CNIFTI_LAPLACE_15: return CNIFTI_LAPLACE_15_STR;
-    case CNIFTI_UNIFORM_16: return CNIFTI_UNIFORM_16_STR;
-    case CNIFTI_TTEST_NONC_17: return CNIFTI_TTEST_NONC_17_STR;
-    case CNIFTI_WEIBULL_18: return CNIFTI_WEIBULL_18_STR;
-    case CNIFTI_CHI_19: return CNIFTI_CHI_19_STR;
-    case CNIFTI_INVGAUSS_20: return CNIFTI_INVGAUSS_20_STR;
-    case CNIFTI_EXTVAL_21: return CNIFTI_EXTVAL_21_STR;
-    case CNIFTI_PVAL_22: return CNIFTI_PVAL_22_STR;
-    case CNIFTI_LOGPVAL_23: return CNIFTI_LOGPVAL_23_STR;
-    case CNIFTI_LOG10PVAL_24: return CNIFTI_LOG10PVAL_24_STR;
-    case CNIFTI_ESTIMATE_1001: return CNIFTI_ESTIMATE_1001_STR;
-    case CNIFTI_LABEL_1002: return CNIFTI_LABEL_1002_STR;
-    case CNIFTI_NEURONAME_1003: return CNIFTI_NEURONAME_1003_STR;
-    case CNIFTI_GENMATRIX_1004: return CNIFTI_GENMATRIX_1004_STR;
-    case CNIFTI_SYMMATRIX_1005: return CNIFTI_SYMMATRIX_1005_STR;
-    case CNIFTI_DISPVECT_1006: return CNIFTI_DISPVECT_1006_STR;
-    case CNIFTI_VECTOR_1007: return CNIFTI_VECTOR_1007_STR;
-    case CNIFTI_POINTSET_1008: return CNIFTI_POINTSET_1008_STR;
-    case CNIFTI_TRIANGLE_1009: return CNIFTI_TRIANGLE_1009_STR;
-    case CNIFTI_QUATERNION_1010: return CNIFTI_QUATERNION_1010_STR;
-    case CNIFTI_DIMLESS_1011: return CNIFTI_DIMLESS_1011_STR;
-    case CNIFTI_TIME_SERIES_2001: return CNIFTI_TIME_SERIES_2001_STR;
-    case CNIFTI_NODE_INDEX_2002: return CNIFTI_NODE_INDEX_2002_STR;
-    case CNIFTI_RGB_VECTOR_2003: return CNIFTI_RGB_VECTOR_2003_STR;
-    case CNIFTI_RGBA_VECTOR_2004: return CNIFTI_RGBA_VECTOR_2004_STR;
-    case CNIFTI_SHAPE_2005: return CNIFTI_SHAPE_2005_STR;
-    case CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006: return CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006_STR;
-    case CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007: return CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007_STR;
-    case CNIFTI_FSL_DCT_COEFFICIENTS_2008: return CNIFTI_FSL_DCT_COEFFICIENTS_2008_STR;
-    case CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009: return CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009_STR;
-    case CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016: return CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016_STR;
-    case CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017: return CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017_STR;
-    case CNIFTI_FSL_TOPUP_FIELD_2018: return CNIFTI_FSL_TOPUP_FIELD_2018_STR;
+    case CNIFTI_INTENT_NONE: return CNIFTI_INTENT_NONE_STR;
+    case CNIFTI_INTENT_CORREL: return CNIFTI_INTENT_CORREL_STR;
+    case CNIFTI_INTENT_TTEST: return CNIFTI_INTENT_TTEST_STR;
+    case CNIFTI_INTENT_FTEST: return CNIFTI_INTENT_FTEST_STR;
+    case CNIFTI_INTENT_ZSCORE: return CNIFTI_INTENT_ZSCORE_STR;
+    case CNIFTI_INTENT_CHISQ: return CNIFTI_INTENT_CHISQ_STR;
+    case CNIFTI_INTENT_BETA: return CNIFTI_INTENT_BETA_STR;
+    case CNIFTI_INTENT_BINOM: return CNIFTI_INTENT_BINOM_STR;
+    case CNIFTI_INTENT_GAMMA: return CNIFTI_INTENT_GAMMA_STR;
+    case CNIFTI_INTENT_POISSON: return CNIFTI_INTENT_POISSON_STR;
+    case CNIFTI_INTENT_NORMAL: return CNIFTI_INTENT_NORMAL_STR;
+    case CNIFTI_INTENT_FTEST_NONC: return CNIFTI_INTENT_FTEST_NONC_STR;
+    case CNIFTI_INTENT_CHISQ_NONC: return CNIFTI_INTENT_CHISQ_NONC_STR;
+    case CNIFTI_INTENT_LOGISTIC: return CNIFTI_INTENT_LOGISTIC_STR;
+    case CNIFTI_INTENT_LAPLACE: return CNIFTI_INTENT_LAPLACE_STR;
+    case CNIFTI_INTENT_UNIFORM: return CNIFTI_INTENT_UNIFORM_STR;
+    case CNIFTI_INTENT_TTEST_NONC: return CNIFTI_INTENT_TTEST_NONC_STR;
+    case CNIFTI_INTENT_WEIBULL: return CNIFTI_INTENT_WEIBULL_STR;
+    case CNIFTI_INTENT_CHI: return CNIFTI_INTENT_CHI_STR;
+    case CNIFTI_INTENT_INVGAUSS: return CNIFTI_INTENT_INVGAUSS_STR;
+    case CNIFTI_INTENT_EXTVAL: return CNIFTI_INTENT_EXTVAL_STR;
+    case CNIFTI_INTENT_PVAL: return CNIFTI_INTENT_PVAL_STR;
+    case CNIFTI_INTENT_LOGPVAL: return CNIFTI_INTENT_LOGPVAL_STR;
+    case CNIFTI_INTENT_LOG10PVAL: return CNIFTI_INTENT_LOG10PVAL_STR;
+    case CNIFTI_INTENT_ESTIMATE: return CNIFTI_INTENT_ESTIMATE_STR;
+    case CNIFTI_INTENT_LABEL: return CNIFTI_INTENT_LABEL_STR;
+    case CNIFTI_INTENT_NEURONAME: return CNIFTI_INTENT_NEURONAME_STR;
+    case CNIFTI_INTENT_GENMATRIX: return CNIFTI_INTENT_GENMATRIX_STR;
+    case CNIFTI_INTENT_SYMMATRIX: return CNIFTI_INTENT_SYMMATRIX_STR;
+    case CNIFTI_INTENT_DISPVECT: return CNIFTI_INTENT_DISPVECT_STR;
+    case CNIFTI_INTENT_VECTOR: return CNIFTI_INTENT_VECTOR_STR;
+    case CNIFTI_INTENT_POINTSET: return CNIFTI_INTENT_POINTSET_STR;
+    case CNIFTI_INTENT_TRIANGLE: return CNIFTI_INTENT_TRIANGLE_STR;
+    case CNIFTI_INTENT_QUATERNION: return CNIFTI_INTENT_QUATERNION_STR;
+    case CNIFTI_INTENT_DIMLESS: return CNIFTI_INTENT_DIMLESS_STR;
+    case CNIFTI_INTENT_TIME_SERIES: return CNIFTI_INTENT_TIME_SERIES_STR;
+    case CNIFTI_INTENT_NODE_INDEX: return CNIFTI_INTENT_NODE_INDEX_STR;
+    case CNIFTI_INTENT_RGB_VECTOR: return CNIFTI_INTENT_RGB_VECTOR_STR;
+    case CNIFTI_INTENT_RGBA_VECTOR: return CNIFTI_INTENT_RGBA_VECTOR_STR;
+    case CNIFTI_INTENT_SHAPE: return CNIFTI_INTENT_SHAPE_STR;
+    case CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD: return CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD_STR;
+    case CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS: return CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS_STR;
+    case CNIFTI_INTENT_FSL_DCT_COEFFICIENTS: return CNIFTI_INTENT_FSL_DCT_COEFFICIENTS_STR;
+    case CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS: return CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS_STR;
+    case CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS: return CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_STR;
+    case CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS: return CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_STR;
+    case CNIFTI_INTENT_FSL_TOPUP_FIELD: return CNIFTI_INTENT_FSL_TOPUP_FIELD_STR;
   default: return NULL;
   }
 }
 /* Returns the intent value from its name. */
 static inline int32_t cnifti_intent_from_name(const char *t_intent) {
   if (t_intent == NULL) return -1;
-  if (strcmp(t_intent, CNIFTI_NONE_0_STR) == 0) return CNIFTI_NONE_0;
-    else if (strcmp(t_intent, CNIFTI_NONE_0_STR) == 0) return CNIFTI_NONE_0;
-    else if (strcmp(t_intent, CNIFTI_CORREL_2_STR) == 0) return CNIFTI_CORREL_2;
-    else if (strcmp(t_intent, CNIFTI_TTEST_3_STR) == 0) return CNIFTI_TTEST_3;
-    else if (strcmp(t_intent, CNIFTI_FTEST_4_STR) == 0) return CNIFTI_FTEST_4;
-    else if (strcmp(t_intent, CNIFTI_ZSCORE_5_STR) == 0) return CNIFTI_ZSCORE_5;
-    else if (strcmp(t_intent, CNIFTI_CHISQ_6_STR) == 0) return CNIFTI_CHISQ_6;
-    else if (strcmp(t_intent, CNIFTI_BETA_7_STR) == 0) return CNIFTI_BETA_7;
-    else if (strcmp(t_intent, CNIFTI_BINOM_8_STR) == 0) return CNIFTI_BINOM_8;
-    else if (strcmp(t_intent, CNIFTI_GAMMA_9_STR) == 0) return CNIFTI_GAMMA_9;
-    else if (strcmp(t_intent, CNIFTI_POISSON_10_STR) == 0) return CNIFTI_POISSON_10;
-    else if (strcmp(t_intent, CNIFTI_NORMAL_11_STR) == 0) return CNIFTI_NORMAL_11;
-    else if (strcmp(t_intent, CNIFTI_FTEST_NONC_12_STR) == 0) return CNIFTI_FTEST_NONC_12;
-    else if (strcmp(t_intent, CNIFTI_CHISQ_NONC_13_STR) == 0) return CNIFTI_CHISQ_NONC_13;
-    else if (strcmp(t_intent, CNIFTI_LOGISTIC_14_STR) == 0) return CNIFTI_LOGISTIC_14;
-    else if (strcmp(t_intent, CNIFTI_LAPLACE_15_STR) == 0) return CNIFTI_LAPLACE_15;
-    else if (strcmp(t_intent, CNIFTI_UNIFORM_16_STR) == 0) return CNIFTI_UNIFORM_16;
-    else if (strcmp(t_intent, CNIFTI_TTEST_NONC_17_STR) == 0) return CNIFTI_TTEST_NONC_17;
-    else if (strcmp(t_intent, CNIFTI_WEIBULL_18_STR) == 0) return CNIFTI_WEIBULL_18;
-    else if (strcmp(t_intent, CNIFTI_CHI_19_STR) == 0) return CNIFTI_CHI_19;
-    else if (strcmp(t_intent, CNIFTI_INVGAUSS_20_STR) == 0) return CNIFTI_INVGAUSS_20;
-    else if (strcmp(t_intent, CNIFTI_EXTVAL_21_STR) == 0) return CNIFTI_EXTVAL_21;
-    else if (strcmp(t_intent, CNIFTI_PVAL_22_STR) == 0) return CNIFTI_PVAL_22;
-    else if (strcmp(t_intent, CNIFTI_LOGPVAL_23_STR) == 0) return CNIFTI_LOGPVAL_23;
-    else if (strcmp(t_intent, CNIFTI_LOG10PVAL_24_STR) == 0) return CNIFTI_LOG10PVAL_24;
-    else if (strcmp(t_intent, CNIFTI_ESTIMATE_1001_STR) == 0) return CNIFTI_ESTIMATE_1001;
-    else if (strcmp(t_intent, CNIFTI_LABEL_1002_STR) == 0) return CNIFTI_LABEL_1002;
-    else if (strcmp(t_intent, CNIFTI_NEURONAME_1003_STR) == 0) return CNIFTI_NEURONAME_1003;
-    else if (strcmp(t_intent, CNIFTI_GENMATRIX_1004_STR) == 0) return CNIFTI_GENMATRIX_1004;
-    else if (strcmp(t_intent, CNIFTI_SYMMATRIX_1005_STR) == 0) return CNIFTI_SYMMATRIX_1005;
-    else if (strcmp(t_intent, CNIFTI_DISPVECT_1006_STR) == 0) return CNIFTI_DISPVECT_1006;
-    else if (strcmp(t_intent, CNIFTI_VECTOR_1007_STR) == 0) return CNIFTI_VECTOR_1007;
-    else if (strcmp(t_intent, CNIFTI_POINTSET_1008_STR) == 0) return CNIFTI_POINTSET_1008;
-    else if (strcmp(t_intent, CNIFTI_TRIANGLE_1009_STR) == 0) return CNIFTI_TRIANGLE_1009;
-    else if (strcmp(t_intent, CNIFTI_QUATERNION_1010_STR) == 0) return CNIFTI_QUATERNION_1010;
-    else if (strcmp(t_intent, CNIFTI_DIMLESS_1011_STR) == 0) return CNIFTI_DIMLESS_1011;
-    else if (strcmp(t_intent, CNIFTI_TIME_SERIES_2001_STR) == 0) return CNIFTI_TIME_SERIES_2001;
-    else if (strcmp(t_intent, CNIFTI_NODE_INDEX_2002_STR) == 0) return CNIFTI_NODE_INDEX_2002;
-    else if (strcmp(t_intent, CNIFTI_RGB_VECTOR_2003_STR) == 0) return CNIFTI_RGB_VECTOR_2003;
-    else if (strcmp(t_intent, CNIFTI_RGBA_VECTOR_2004_STR) == 0) return CNIFTI_RGBA_VECTOR_2004;
-    else if (strcmp(t_intent, CNIFTI_SHAPE_2005_STR) == 0) return CNIFTI_SHAPE_2005;
-    else if (strcmp(t_intent, CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006_STR) == 0) return CNIFTI_FSL_FNIRT_DISPLACEMENT_FIELD_2006;
-    else if (strcmp(t_intent, CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007_STR) == 0) return CNIFTI_FSL_CUBIC_SPLINE_COEFFICIENTS_2007;
-    else if (strcmp(t_intent, CNIFTI_FSL_DCT_COEFFICIENTS_2008_STR) == 0) return CNIFTI_FSL_DCT_COEFFICIENTS_2008;
-    else if (strcmp(t_intent, CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009_STR) == 0) return CNIFTI_FSL_QUADRATIC_SPLINE_COEFFICIENTS_2009;
-    else if (strcmp(t_intent, CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016_STR) == 0) return CNIFTI_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_2016;
-    else if (strcmp(t_intent, CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017_STR) == 0) return CNIFTI_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_2017;
-    else if (strcmp(t_intent, CNIFTI_FSL_TOPUP_FIELD_2018_STR) == 0) return CNIFTI_FSL_TOPUP_FIELD_2018;
+  if (strcmp(t_intent, CNIFTI_INTENT_NONE_STR) == 0) return CNIFTI_INTENT_NONE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_NONE_STR) == 0) return CNIFTI_INTENT_NONE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_CORREL_STR) == 0) return CNIFTI_INTENT_CORREL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_TTEST_STR) == 0) return CNIFTI_INTENT_TTEST;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FTEST_STR) == 0) return CNIFTI_INTENT_FTEST;
+    else if (strcmp(t_intent, CNIFTI_INTENT_ZSCORE_STR) == 0) return CNIFTI_INTENT_ZSCORE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_CHISQ_STR) == 0) return CNIFTI_INTENT_CHISQ;
+    else if (strcmp(t_intent, CNIFTI_INTENT_BETA_STR) == 0) return CNIFTI_INTENT_BETA;
+    else if (strcmp(t_intent, CNIFTI_INTENT_BINOM_STR) == 0) return CNIFTI_INTENT_BINOM;
+    else if (strcmp(t_intent, CNIFTI_INTENT_GAMMA_STR) == 0) return CNIFTI_INTENT_GAMMA;
+    else if (strcmp(t_intent, CNIFTI_INTENT_POISSON_STR) == 0) return CNIFTI_INTENT_POISSON;
+    else if (strcmp(t_intent, CNIFTI_INTENT_NORMAL_STR) == 0) return CNIFTI_INTENT_NORMAL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FTEST_NONC_STR) == 0) return CNIFTI_INTENT_FTEST_NONC;
+    else if (strcmp(t_intent, CNIFTI_INTENT_CHISQ_NONC_STR) == 0) return CNIFTI_INTENT_CHISQ_NONC;
+    else if (strcmp(t_intent, CNIFTI_INTENT_LOGISTIC_STR) == 0) return CNIFTI_INTENT_LOGISTIC;
+    else if (strcmp(t_intent, CNIFTI_INTENT_LAPLACE_STR) == 0) return CNIFTI_INTENT_LAPLACE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_UNIFORM_STR) == 0) return CNIFTI_INTENT_UNIFORM;
+    else if (strcmp(t_intent, CNIFTI_INTENT_TTEST_NONC_STR) == 0) return CNIFTI_INTENT_TTEST_NONC;
+    else if (strcmp(t_intent, CNIFTI_INTENT_WEIBULL_STR) == 0) return CNIFTI_INTENT_WEIBULL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_CHI_STR) == 0) return CNIFTI_INTENT_CHI;
+    else if (strcmp(t_intent, CNIFTI_INTENT_INVGAUSS_STR) == 0) return CNIFTI_INTENT_INVGAUSS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_EXTVAL_STR) == 0) return CNIFTI_INTENT_EXTVAL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_PVAL_STR) == 0) return CNIFTI_INTENT_PVAL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_LOGPVAL_STR) == 0) return CNIFTI_INTENT_LOGPVAL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_LOG10PVAL_STR) == 0) return CNIFTI_INTENT_LOG10PVAL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_ESTIMATE_STR) == 0) return CNIFTI_INTENT_ESTIMATE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_LABEL_STR) == 0) return CNIFTI_INTENT_LABEL;
+    else if (strcmp(t_intent, CNIFTI_INTENT_NEURONAME_STR) == 0) return CNIFTI_INTENT_NEURONAME;
+    else if (strcmp(t_intent, CNIFTI_INTENT_GENMATRIX_STR) == 0) return CNIFTI_INTENT_GENMATRIX;
+    else if (strcmp(t_intent, CNIFTI_INTENT_SYMMATRIX_STR) == 0) return CNIFTI_INTENT_SYMMATRIX;
+    else if (strcmp(t_intent, CNIFTI_INTENT_DISPVECT_STR) == 0) return CNIFTI_INTENT_DISPVECT;
+    else if (strcmp(t_intent, CNIFTI_INTENT_VECTOR_STR) == 0) return CNIFTI_INTENT_VECTOR;
+    else if (strcmp(t_intent, CNIFTI_INTENT_POINTSET_STR) == 0) return CNIFTI_INTENT_POINTSET;
+    else if (strcmp(t_intent, CNIFTI_INTENT_TRIANGLE_STR) == 0) return CNIFTI_INTENT_TRIANGLE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_QUATERNION_STR) == 0) return CNIFTI_INTENT_QUATERNION;
+    else if (strcmp(t_intent, CNIFTI_INTENT_DIMLESS_STR) == 0) return CNIFTI_INTENT_DIMLESS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_TIME_SERIES_STR) == 0) return CNIFTI_INTENT_TIME_SERIES;
+    else if (strcmp(t_intent, CNIFTI_INTENT_NODE_INDEX_STR) == 0) return CNIFTI_INTENT_NODE_INDEX;
+    else if (strcmp(t_intent, CNIFTI_INTENT_RGB_VECTOR_STR) == 0) return CNIFTI_INTENT_RGB_VECTOR;
+    else if (strcmp(t_intent, CNIFTI_INTENT_RGBA_VECTOR_STR) == 0) return CNIFTI_INTENT_RGBA_VECTOR;
+    else if (strcmp(t_intent, CNIFTI_INTENT_SHAPE_STR) == 0) return CNIFTI_INTENT_SHAPE;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD_STR) == 0) return CNIFTI_INTENT_FSL_FNIRT_DISPLACEMENT_FIELD;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS_STR) == 0) return CNIFTI_INTENT_FSL_CUBIC_SPLINE_COEFFICIENTS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_DCT_COEFFICIENTS_STR) == 0) return CNIFTI_INTENT_FSL_DCT_COEFFICIENTS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS_STR) == 0) return CNIFTI_INTENT_FSL_QUADRATIC_SPLINE_COEFFICIENTS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS_STR) == 0) return CNIFTI_INTENT_FSL_TOPUP_CUBIC_SPLINE_COEFFICIENTS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS_STR) == 0) return CNIFTI_INTENT_FSL_TOPUP_QUADRATIC_SPLINE_COEFFICIENTS;
+    else if (strcmp(t_intent, CNIFTI_INTENT_FSL_TOPUP_FIELD_STR) == 0) return CNIFTI_INTENT_FSL_TOPUP_FIELD;
   return -1;
-}//// Enum xform ////
-/** @brief Arbitrary coordinates. (unknown::unknown) */
-#define CNIFTI_UNKNOWN_0 0
-/** @brief Scanner-based anatomical coordinates. (scanner_anat::scanner_anat) */
-#define CNIFTI_SCANNER_ANAT_1 1
-/** @brief Coordinates aligned to another file's, or to the anatomical "truth" (with an arbitrary coordinate center). (aligned_anat::aligned_anat) */
-#define CNIFTI_ALIGNED_ANAT_2 2
-/** @brief Coordinates aligned to the Talairach space. (talairach::talairach) */
-#define CNIFTI_TALAIRACH_3 3
-/** @brief Coordinates aligned to the MNI152 space. (mni_152::mni_152) */
-#define CNIFTI_MNI_152_4 4
-/** @brief Coordinates aligned to some template that is not MNI152 or Talairach. (template_other::template_other) */
-#define CNIFTI_TEMPLATE_OTHER_5 5
-/** @brief unknown::unknown name string */
-#define CNIFTI_UNKNOWN_0_STR "unknown"
-/** @brief scanner_anat::scanner_anat name string */
-#define CNIFTI_SCANNER_ANAT_1_STR "scanner_anat"
-/** @brief aligned_anat::aligned_anat name string */
-#define CNIFTI_ALIGNED_ANAT_2_STR "aligned_anat"
-/** @brief talairach::talairach name string */
-#define CNIFTI_TALAIRACH_3_STR "talairach"
-/** @brief mni_152::mni_152 name string */
-#define CNIFTI_MNI_152_4_STR "mni_152"
-/** @brief template_other::template_other name string */
-#define CNIFTI_TEMPLATE_OTHER_5_STR "template_other"
+}////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Enum xform //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief Arbitrary coordinates. (xform::unknown) */
+#define CNIFTI_XFORM_UNKNOWN 0
+/** @brief Scanner-based anatomical coordinates. (xform::scanner_anat) */
+#define CNIFTI_XFORM_SCANNER_ANAT 1
+/** @brief Coordinates aligned to another file's, or to the anatomical "truth" (with an arbitrary coordinate center). (xform::aligned_anat) */
+#define CNIFTI_XFORM_ALIGNED_ANAT 2
+/** @brief Coordinates aligned to the Talairach space. (xform::talairach) */
+#define CNIFTI_XFORM_TALAIRACH 3
+/** @brief Coordinates aligned to the MNI152 space. (xform::mni_152) */
+#define CNIFTI_XFORM_MNI_152 4
+/** @brief Coordinates aligned to some template that is not MNI152 or Talairach. (xform::template_other) */
+#define CNIFTI_XFORM_TEMPLATE_OTHER 5
+/** @brief xform::unknown name string */
+#define CNIFTI_XFORM_UNKNOWN_STR "unknown"
+/** @brief xform::scanner_anat name string */
+#define CNIFTI_XFORM_SCANNER_ANAT_STR "scanner_anat"
+/** @brief xform::aligned_anat name string */
+#define CNIFTI_XFORM_ALIGNED_ANAT_STR "aligned_anat"
+/** @brief xform::talairach name string */
+#define CNIFTI_XFORM_TALAIRACH_STR "talairach"
+/** @brief xform::mni_152 name string */
+#define CNIFTI_XFORM_MNI_152_STR "mni_152"
+/** @brief xform::template_other name string */
+#define CNIFTI_XFORM_TEMPLATE_OTHER_STR "template_other"
 
 /* Returns the name of the xform value. */
 static inline const char *cnifti_xform_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_UNKNOWN_0: return CNIFTI_UNKNOWN_0_STR;
-    case CNIFTI_SCANNER_ANAT_1: return CNIFTI_SCANNER_ANAT_1_STR;
-    case CNIFTI_ALIGNED_ANAT_2: return CNIFTI_ALIGNED_ANAT_2_STR;
-    case CNIFTI_TALAIRACH_3: return CNIFTI_TALAIRACH_3_STR;
-    case CNIFTI_MNI_152_4: return CNIFTI_MNI_152_4_STR;
-    case CNIFTI_TEMPLATE_OTHER_5: return CNIFTI_TEMPLATE_OTHER_5_STR;
+    case CNIFTI_XFORM_UNKNOWN: return CNIFTI_XFORM_UNKNOWN_STR;
+    case CNIFTI_XFORM_SCANNER_ANAT: return CNIFTI_XFORM_SCANNER_ANAT_STR;
+    case CNIFTI_XFORM_ALIGNED_ANAT: return CNIFTI_XFORM_ALIGNED_ANAT_STR;
+    case CNIFTI_XFORM_TALAIRACH: return CNIFTI_XFORM_TALAIRACH_STR;
+    case CNIFTI_XFORM_MNI_152: return CNIFTI_XFORM_MNI_152_STR;
+    case CNIFTI_XFORM_TEMPLATE_OTHER: return CNIFTI_XFORM_TEMPLATE_OTHER_STR;
   default: return NULL;
   }
 }
 /* Returns the xform value from its name. */
 static inline int32_t cnifti_xform_from_name(const char *t_xform) {
   if (t_xform == NULL) return -1;
-  if (strcmp(t_xform, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_xform, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_xform, CNIFTI_SCANNER_ANAT_1_STR) == 0) return CNIFTI_SCANNER_ANAT_1;
-    else if (strcmp(t_xform, CNIFTI_ALIGNED_ANAT_2_STR) == 0) return CNIFTI_ALIGNED_ANAT_2;
-    else if (strcmp(t_xform, CNIFTI_TALAIRACH_3_STR) == 0) return CNIFTI_TALAIRACH_3;
-    else if (strcmp(t_xform, CNIFTI_MNI_152_4_STR) == 0) return CNIFTI_MNI_152_4;
-    else if (strcmp(t_xform, CNIFTI_TEMPLATE_OTHER_5_STR) == 0) return CNIFTI_TEMPLATE_OTHER_5;
+  if (strcmp(t_xform, CNIFTI_XFORM_UNKNOWN_STR) == 0) return CNIFTI_XFORM_UNKNOWN;
+    else if (strcmp(t_xform, CNIFTI_XFORM_UNKNOWN_STR) == 0) return CNIFTI_XFORM_UNKNOWN;
+    else if (strcmp(t_xform, CNIFTI_XFORM_SCANNER_ANAT_STR) == 0) return CNIFTI_XFORM_SCANNER_ANAT;
+    else if (strcmp(t_xform, CNIFTI_XFORM_ALIGNED_ANAT_STR) == 0) return CNIFTI_XFORM_ALIGNED_ANAT;
+    else if (strcmp(t_xform, CNIFTI_XFORM_TALAIRACH_STR) == 0) return CNIFTI_XFORM_TALAIRACH;
+    else if (strcmp(t_xform, CNIFTI_XFORM_MNI_152_STR) == 0) return CNIFTI_XFORM_MNI_152;
+    else if (strcmp(t_xform, CNIFTI_XFORM_TEMPLATE_OTHER_STR) == 0) return CNIFTI_XFORM_TEMPLATE_OTHER;
   return -1;
-}//// Enum units ////
-/** @brief Unknown units (unknown::unknown) */
-#define CNIFTI_UNKNOWN_0 0
-/** @brief Meter (m) (meter::meter) */
-#define CNIFTI_METER_1 1
-/** @brief Millimeter (mm) (mm::mm) */
-#define CNIFTI_MM_2 2
-/** @brief Micron (um) (micron::micron) */
-#define CNIFTI_MICRON_3 3
-/** @brief Seconds (s) (sec::sec) */
-#define CNIFTI_SEC_8 8
-/** @brief Miliseconds (ms) (msec::msec) */
-#define CNIFTI_MSEC_16 16
-/** @brief Microseconds (us) (usec::usec) */
-#define CNIFTI_USEC_24 24
-/** @brief Hertz (Hz) (hz::hz) */
-#define CNIFTI_HZ_32 32
-/** @brief Parts-per-million (ppm) (ppm::ppm) */
-#define CNIFTI_PPM_40 40
-/** @brief Radians per second (rad/s) (rads::rads) */
-#define CNIFTI_RADS_48 48
-/** @brief unknown::unknown name string */
-#define CNIFTI_UNKNOWN_0_STR "unknown"
-/** @brief meter::meter name string */
-#define CNIFTI_METER_1_STR "meter"
-/** @brief mm::mm name string */
-#define CNIFTI_MM_2_STR "mm"
-/** @brief micron::micron name string */
-#define CNIFTI_MICRON_3_STR "micron"
-/** @brief sec::sec name string */
-#define CNIFTI_SEC_8_STR "sec"
-/** @brief msec::msec name string */
-#define CNIFTI_MSEC_16_STR "msec"
-/** @brief usec::usec name string */
-#define CNIFTI_USEC_24_STR "usec"
-/** @brief hz::hz name string */
-#define CNIFTI_HZ_32_STR "hz"
-/** @brief ppm::ppm name string */
-#define CNIFTI_PPM_40_STR "ppm"
-/** @brief rads::rads name string */
-#define CNIFTI_RADS_48_STR "rads"
+}////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Enum units //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief Unknown units (units::unknown) */
+#define CNIFTI_UNITS_UNKNOWN 0
+/** @brief Meter (m) (units::meter) */
+#define CNIFTI_UNITS_METER 1
+/** @brief Millimeter (mm) (units::mm) */
+#define CNIFTI_UNITS_MM 2
+/** @brief Micron (um) (units::micron) */
+#define CNIFTI_UNITS_MICRON 3
+/** @brief Seconds (s) (units::sec) */
+#define CNIFTI_UNITS_SEC 8
+/** @brief Miliseconds (ms) (units::msec) */
+#define CNIFTI_UNITS_MSEC 16
+/** @brief Microseconds (us) (units::usec) */
+#define CNIFTI_UNITS_USEC 24
+/** @brief Hertz (Hz) (units::hz) */
+#define CNIFTI_UNITS_HZ 32
+/** @brief Parts-per-million (ppm) (units::ppm) */
+#define CNIFTI_UNITS_PPM 40
+/** @brief Radians per second (rad/s) (units::rads) */
+#define CNIFTI_UNITS_RADS 48
+/** @brief units::unknown name string */
+#define CNIFTI_UNITS_UNKNOWN_STR "unknown"
+/** @brief units::meter name string */
+#define CNIFTI_UNITS_METER_STR "meter"
+/** @brief units::mm name string */
+#define CNIFTI_UNITS_MM_STR "mm"
+/** @brief units::micron name string */
+#define CNIFTI_UNITS_MICRON_STR "micron"
+/** @brief units::sec name string */
+#define CNIFTI_UNITS_SEC_STR "sec"
+/** @brief units::msec name string */
+#define CNIFTI_UNITS_MSEC_STR "msec"
+/** @brief units::usec name string */
+#define CNIFTI_UNITS_USEC_STR "usec"
+/** @brief units::hz name string */
+#define CNIFTI_UNITS_HZ_STR "hz"
+/** @brief units::ppm name string */
+#define CNIFTI_UNITS_PPM_STR "ppm"
+/** @brief units::rads name string */
+#define CNIFTI_UNITS_RADS_STR "rads"
 
 /* Returns the name of the units value. */
 static inline const char *cnifti_units_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_UNKNOWN_0: return CNIFTI_UNKNOWN_0_STR;
-    case CNIFTI_METER_1: return CNIFTI_METER_1_STR;
-    case CNIFTI_MM_2: return CNIFTI_MM_2_STR;
-    case CNIFTI_MICRON_3: return CNIFTI_MICRON_3_STR;
-    case CNIFTI_SEC_8: return CNIFTI_SEC_8_STR;
-    case CNIFTI_MSEC_16: return CNIFTI_MSEC_16_STR;
-    case CNIFTI_USEC_24: return CNIFTI_USEC_24_STR;
-    case CNIFTI_HZ_32: return CNIFTI_HZ_32_STR;
-    case CNIFTI_PPM_40: return CNIFTI_PPM_40_STR;
-    case CNIFTI_RADS_48: return CNIFTI_RADS_48_STR;
+    case CNIFTI_UNITS_UNKNOWN: return CNIFTI_UNITS_UNKNOWN_STR;
+    case CNIFTI_UNITS_METER: return CNIFTI_UNITS_METER_STR;
+    case CNIFTI_UNITS_MM: return CNIFTI_UNITS_MM_STR;
+    case CNIFTI_UNITS_MICRON: return CNIFTI_UNITS_MICRON_STR;
+    case CNIFTI_UNITS_SEC: return CNIFTI_UNITS_SEC_STR;
+    case CNIFTI_UNITS_MSEC: return CNIFTI_UNITS_MSEC_STR;
+    case CNIFTI_UNITS_USEC: return CNIFTI_UNITS_USEC_STR;
+    case CNIFTI_UNITS_HZ: return CNIFTI_UNITS_HZ_STR;
+    case CNIFTI_UNITS_PPM: return CNIFTI_UNITS_PPM_STR;
+    case CNIFTI_UNITS_RADS: return CNIFTI_UNITS_RADS_STR;
   default: return NULL;
   }
 }
 /* Returns the units value from its name. */
 static inline int32_t cnifti_units_from_name(const char *t_units) {
   if (t_units == NULL) return -1;
-  if (strcmp(t_units, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_units, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_units, CNIFTI_METER_1_STR) == 0) return CNIFTI_METER_1;
-    else if (strcmp(t_units, CNIFTI_MM_2_STR) == 0) return CNIFTI_MM_2;
-    else if (strcmp(t_units, CNIFTI_MICRON_3_STR) == 0) return CNIFTI_MICRON_3;
-    else if (strcmp(t_units, CNIFTI_SEC_8_STR) == 0) return CNIFTI_SEC_8;
-    else if (strcmp(t_units, CNIFTI_MSEC_16_STR) == 0) return CNIFTI_MSEC_16;
-    else if (strcmp(t_units, CNIFTI_USEC_24_STR) == 0) return CNIFTI_USEC_24;
-    else if (strcmp(t_units, CNIFTI_HZ_32_STR) == 0) return CNIFTI_HZ_32;
-    else if (strcmp(t_units, CNIFTI_PPM_40_STR) == 0) return CNIFTI_PPM_40;
-    else if (strcmp(t_units, CNIFTI_RADS_48_STR) == 0) return CNIFTI_RADS_48;
+  if (strcmp(t_units, CNIFTI_UNITS_UNKNOWN_STR) == 0) return CNIFTI_UNITS_UNKNOWN;
+    else if (strcmp(t_units, CNIFTI_UNITS_UNKNOWN_STR) == 0) return CNIFTI_UNITS_UNKNOWN;
+    else if (strcmp(t_units, CNIFTI_UNITS_METER_STR) == 0) return CNIFTI_UNITS_METER;
+    else if (strcmp(t_units, CNIFTI_UNITS_MM_STR) == 0) return CNIFTI_UNITS_MM;
+    else if (strcmp(t_units, CNIFTI_UNITS_MICRON_STR) == 0) return CNIFTI_UNITS_MICRON;
+    else if (strcmp(t_units, CNIFTI_UNITS_SEC_STR) == 0) return CNIFTI_UNITS_SEC;
+    else if (strcmp(t_units, CNIFTI_UNITS_MSEC_STR) == 0) return CNIFTI_UNITS_MSEC;
+    else if (strcmp(t_units, CNIFTI_UNITS_USEC_STR) == 0) return CNIFTI_UNITS_USEC;
+    else if (strcmp(t_units, CNIFTI_UNITS_HZ_STR) == 0) return CNIFTI_UNITS_HZ;
+    else if (strcmp(t_units, CNIFTI_UNITS_PPM_STR) == 0) return CNIFTI_UNITS_PPM;
+    else if (strcmp(t_units, CNIFTI_UNITS_RADS_STR) == 0) return CNIFTI_UNITS_RADS;
   return -1;
-}//// Enum slice ////
-/** @brief Slice order: Unknown (unknown::unknown) */
-#define CNIFTI_UNKNOWN_0 0
-/** @brief Slice order: Sequential, increasing (seq_inc::seq_inc) */
-#define CNIFTI_SEQ_INC_1 1
-/** @brief Slice order: Sequential, decreasing (seq_dec::seq_dec) */
-#define CNIFTI_SEQ_DEC_2 2
-/** @brief Slice order: Interleaved, increasing, starting at the first slice (alt_inc::alt_inc) */
-#define CNIFTI_ALT_INC_3 3
-/** @brief Slice order: Interleaved, decreasing, starting at the last slice (alt_dec::alt_dec) */
-#define CNIFTI_ALT_DEC_4 4
-/** @brief Slice order: Interleaved, increasing, starting at the second slice (alt_inc2::alt_inc2) */
-#define CNIFTI_ALT_INC2_5 5
-/** @brief Slice order: Interleaved, decreasing, starting at the second to last slice (alt_dec2::alt_dec2) */
-#define CNIFTI_ALT_DEC2_6 6
-/** @brief unknown::unknown name string */
-#define CNIFTI_UNKNOWN_0_STR "unknown"
-/** @brief seq_inc::seq_inc name string */
-#define CNIFTI_SEQ_INC_1_STR "seq_inc"
-/** @brief seq_dec::seq_dec name string */
-#define CNIFTI_SEQ_DEC_2_STR "seq_dec"
-/** @brief alt_inc::alt_inc name string */
-#define CNIFTI_ALT_INC_3_STR "alt_inc"
-/** @brief alt_dec::alt_dec name string */
-#define CNIFTI_ALT_DEC_4_STR "alt_dec"
-/** @brief alt_inc2::alt_inc2 name string */
-#define CNIFTI_ALT_INC2_5_STR "alt_inc2"
-/** @brief alt_dec2::alt_dec2 name string */
-#define CNIFTI_ALT_DEC2_6_STR "alt_dec2"
+}////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Enum slice //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief Slice order: Unknown (slice::unknown) */
+#define CNIFTI_SLICE_UNKNOWN 0
+/** @brief Slice order: Sequential, increasing (slice::seq_inc) */
+#define CNIFTI_SLICE_SEQ_INC 1
+/** @brief Slice order: Sequential, decreasing (slice::seq_dec) */
+#define CNIFTI_SLICE_SEQ_DEC 2
+/** @brief Slice order: Interleaved, increasing, starting at the first slice (slice::alt_inc) */
+#define CNIFTI_SLICE_ALT_INC 3
+/** @brief Slice order: Interleaved, decreasing, starting at the last slice (slice::alt_dec) */
+#define CNIFTI_SLICE_ALT_DEC 4
+/** @brief Slice order: Interleaved, increasing, starting at the second slice (slice::alt_inc2) */
+#define CNIFTI_SLICE_ALT_INC2 5
+/** @brief Slice order: Interleaved, decreasing, starting at the second to last slice (slice::alt_dec2) */
+#define CNIFTI_SLICE_ALT_DEC2 6
+/** @brief slice::unknown name string */
+#define CNIFTI_SLICE_UNKNOWN_STR "unknown"
+/** @brief slice::seq_inc name string */
+#define CNIFTI_SLICE_SEQ_INC_STR "seq_inc"
+/** @brief slice::seq_dec name string */
+#define CNIFTI_SLICE_SEQ_DEC_STR "seq_dec"
+/** @brief slice::alt_inc name string */
+#define CNIFTI_SLICE_ALT_INC_STR "alt_inc"
+/** @brief slice::alt_dec name string */
+#define CNIFTI_SLICE_ALT_DEC_STR "alt_dec"
+/** @brief slice::alt_inc2 name string */
+#define CNIFTI_SLICE_ALT_INC2_STR "alt_inc2"
+/** @brief slice::alt_dec2 name string */
+#define CNIFTI_SLICE_ALT_DEC2_STR "alt_dec2"
 
 /* Returns the name of the slice value. */
 static inline const char *cnifti_slice_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_UNKNOWN_0: return CNIFTI_UNKNOWN_0_STR;
-    case CNIFTI_SEQ_INC_1: return CNIFTI_SEQ_INC_1_STR;
-    case CNIFTI_SEQ_DEC_2: return CNIFTI_SEQ_DEC_2_STR;
-    case CNIFTI_ALT_INC_3: return CNIFTI_ALT_INC_3_STR;
-    case CNIFTI_ALT_DEC_4: return CNIFTI_ALT_DEC_4_STR;
-    case CNIFTI_ALT_INC2_5: return CNIFTI_ALT_INC2_5_STR;
-    case CNIFTI_ALT_DEC2_6: return CNIFTI_ALT_DEC2_6_STR;
+    case CNIFTI_SLICE_UNKNOWN: return CNIFTI_SLICE_UNKNOWN_STR;
+    case CNIFTI_SLICE_SEQ_INC: return CNIFTI_SLICE_SEQ_INC_STR;
+    case CNIFTI_SLICE_SEQ_DEC: return CNIFTI_SLICE_SEQ_DEC_STR;
+    case CNIFTI_SLICE_ALT_INC: return CNIFTI_SLICE_ALT_INC_STR;
+    case CNIFTI_SLICE_ALT_DEC: return CNIFTI_SLICE_ALT_DEC_STR;
+    case CNIFTI_SLICE_ALT_INC2: return CNIFTI_SLICE_ALT_INC2_STR;
+    case CNIFTI_SLICE_ALT_DEC2: return CNIFTI_SLICE_ALT_DEC2_STR;
   default: return NULL;
   }
 }
 /* Returns the slice value from its name. */
 static inline int32_t cnifti_slice_from_name(const char *t_slice) {
   if (t_slice == NULL) return -1;
-  if (strcmp(t_slice, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_slice, CNIFTI_UNKNOWN_0_STR) == 0) return CNIFTI_UNKNOWN_0;
-    else if (strcmp(t_slice, CNIFTI_SEQ_INC_1_STR) == 0) return CNIFTI_SEQ_INC_1;
-    else if (strcmp(t_slice, CNIFTI_SEQ_DEC_2_STR) == 0) return CNIFTI_SEQ_DEC_2;
-    else if (strcmp(t_slice, CNIFTI_ALT_INC_3_STR) == 0) return CNIFTI_ALT_INC_3;
-    else if (strcmp(t_slice, CNIFTI_ALT_DEC_4_STR) == 0) return CNIFTI_ALT_DEC_4;
-    else if (strcmp(t_slice, CNIFTI_ALT_INC2_5_STR) == 0) return CNIFTI_ALT_INC2_5;
-    else if (strcmp(t_slice, CNIFTI_ALT_DEC2_6_STR) == 0) return CNIFTI_ALT_DEC2_6;
+  if (strcmp(t_slice, CNIFTI_SLICE_UNKNOWN_STR) == 0) return CNIFTI_SLICE_UNKNOWN;
+    else if (strcmp(t_slice, CNIFTI_SLICE_UNKNOWN_STR) == 0) return CNIFTI_SLICE_UNKNOWN;
+    else if (strcmp(t_slice, CNIFTI_SLICE_SEQ_INC_STR) == 0) return CNIFTI_SLICE_SEQ_INC;
+    else if (strcmp(t_slice, CNIFTI_SLICE_SEQ_DEC_STR) == 0) return CNIFTI_SLICE_SEQ_DEC;
+    else if (strcmp(t_slice, CNIFTI_SLICE_ALT_INC_STR) == 0) return CNIFTI_SLICE_ALT_INC;
+    else if (strcmp(t_slice, CNIFTI_SLICE_ALT_DEC_STR) == 0) return CNIFTI_SLICE_ALT_DEC;
+    else if (strcmp(t_slice, CNIFTI_SLICE_ALT_INC2_STR) == 0) return CNIFTI_SLICE_ALT_INC2;
+    else if (strcmp(t_slice, CNIFTI_SLICE_ALT_DEC2_STR) == 0) return CNIFTI_SLICE_ALT_DEC2;
   return -1;
-}//// Enum ecode ////
-/** @brief ignore::ignore */
-#define CNIFTI_IGNORE_0 0
-/** @brief intended for raw DICOM attributes (dicom::dicom) */
-#define CNIFTI_DICOM_2 2
+}////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Enum ecode //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/** @brief ecode::ignore */
+#define CNIFTI_ECODE_IGNORE 0
+/** @brief intended for raw DICOM attributes (ecode::dicom) */
+#define CNIFTI_ECODE_DICOM 2
 /**
  * @brief Robert W Cox: rwcox\@nih.gov
  * https://afni.nimh.nih.gov/afni
- *  (afni::afni)
+ *  (ecode::afni)
  */
-#define CNIFTI_AFNI_4 4
-/** @brief plain ASCII text only (comment::comment) */
-#define CNIFTI_COMMENT_6 6
+#define CNIFTI_ECODE_AFNI 4
+/** @brief plain ASCII text only (ecode::comment) */
+#define CNIFTI_ECODE_COMMENT 6
 /**
  * @brief David B Keator: dbkeator\@uci.edu
  * http://www.nbirn.net/Resources/Users/Applications/xcede/index.htm
- *  (xcede::xcede)
+ *  (ecode::xcede)
  */
-#define CNIFTI_XCEDE_8 8
+#define CNIFTI_ECODE_XCEDE 8
 /**
  * @brief Mark A Horsfield
  * mah5\@leicester.ac.uk
- *  (jimdiminfo::jimdiminfo)
+ *  (ecode::jimdiminfo)
  */
-#define CNIFTI_JIMDIMINFO_10 10
+#define CNIFTI_ECODE_JIMDIMINFO 10
 /**
  * @brief Kate Fissell: fissell\@pitt.edu
  * http://kraepelin.wpic.pitt.edu/~fissell/NIFTI_ECODE_WORKFLOW_FWDS/NIFTI_ECODE_WORKFLOW_FWDS.html
- *  (workflow_fwds::workflow_fwds)
+ *  (ecode::workflow_fwds)
  */
-#define CNIFTI_WORKFLOW_FWDS_12 12
-/** @brief http://surfer.nmr.mgh.harvard.edu/ (freesurfer::freesurfer) */
-#define CNIFTI_FREESURFER_14 14
-/** @brief embedded Python objects (pypickle::pypickle) */
-#define CNIFTI_PYPICKLE_16 16
+#define CNIFTI_ECODE_WORKFLOW_FWDS 12
+/** @brief http://surfer.nmr.mgh.harvard.edu/ (ecode::freesurfer) */
+#define CNIFTI_ECODE_FREESURFER 14
+/** @brief embedded Python objects (ecode::pypickle) */
+#define CNIFTI_ECODE_PYPICKLE 16
 /**
  * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- *  (mind_ident::mind_ident)
+ *  (ecode::mind_ident)
  */
-#define CNIFTI_MIND_IDENT_18 18
+#define CNIFTI_ECODE_MIND_IDENT 18
 /**
  * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- *  (b_value::b_value)
+ *  (ecode::b_value)
  */
-#define CNIFTI_B_VALUE_20 20
+#define CNIFTI_ECODE_B_VALUE 20
 /**
  * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- *  (spherical_direction::spherical_direction)
+ *  (ecode::spherical_direction)
  */
-#define CNIFTI_SPHERICAL_DIRECTION_22 22
+#define CNIFTI_ECODE_SPHERICAL_DIRECTION 22
 /**
  * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- *  (dt_component::dt_component)
+ *  (ecode::dt_component)
  */
-#define CNIFTI_DT_COMPONENT_24 24
+#define CNIFTI_ECODE_DT_COMPONENT 24
 /**
  * @brief LONI MiND codes: http://www.loni.ucla.edu/twiki/bin/view/Main/MiND
  * Vishal Patel: vishal.patel\@ucla.edu
- *  (shc_degreeorder::shc_degreeorder)
+ *  (ecode::shc_degreeorder)
  */
-#define CNIFTI_SHC_DEGREEORDER_26 26
-/** @brief Dan Kimberg: www.voxbo.org (voxbo::voxbo) */
-#define CNIFTI_VOXBO_28 28
+#define CNIFTI_ECODE_SHC_DEGREEORDER 26
+/** @brief Dan Kimberg: www.voxbo.org (ecode::voxbo) */
+#define CNIFTI_ECODE_VOXBO 28
 /**
  * @brief John Harwell: john\@brainvis.wustl.edu
  * http://brainvis.wustl.edu/wiki/index.php/Caret:Documentation:CaretNiftiExtension
- *  (caret::caret)
+ *  (ecode::caret)
  */
-#define CNIFTI_CARET_30 30
-/** @brief CIFTI-2_Main_FINAL_1March2014.pdf (cifti::cifti) */
-#define CNIFTI_CIFTI_32 32
-/** @brief variable_frame_timing::variable_frame_timing */
-#define CNIFTI_VARIABLE_FRAME_TIMING_34 34
-/** @brief Munster University Hospital (eval::eval) */
-#define CNIFTI_EVAL_38 38
+#define CNIFTI_ECODE_CARET 30
+/** @brief CIFTI-2_Main_FINAL_1March2014.pdf (ecode::cifti) */
+#define CNIFTI_ECODE_CIFTI 32
+/** @brief ecode::variable_frame_timing */
+#define CNIFTI_ECODE_VARIABLE_FRAME_TIMING 34
+/** @brief Munster University Hospital (ecode::eval) */
+#define CNIFTI_ECODE_EVAL 38
 /**
  * @brief MATLAB extension
  * http://www.mathworks.com/matlabcentral/fileexchange/42997-dicom-to-nifti-converter
- *  (matlab::matlab)
+ *  (ecode::matlab)
  */
-#define CNIFTI_MATLAB_40 40
+#define CNIFTI_ECODE_MATLAB 40
 /**
  * @brief Quantiphyse extension
  * https://quantiphyse.readthedocs.io/en/latest/advanced/nifti_extension.html
- *  (quantiphyse::quantiphyse)
+ *  (ecode::quantiphyse)
  */
-#define CNIFTI_QUANTIPHYSE_42 42
+#define CNIFTI_ECODE_QUANTIPHYSE 42
 /**
  * @brief Magnetic Resonance Spectroscopy (MRS)
- *  (mrs::mrs)
+ *  (ecode::mrs)
  */
-#define CNIFTI_MRS_44 44
-/** @brief ignore::ignore name string */
-#define CNIFTI_IGNORE_0_STR "ignore"
-/** @brief dicom::dicom name string */
-#define CNIFTI_DICOM_2_STR "dicom"
-/** @brief afni::afni name string */
-#define CNIFTI_AFNI_4_STR "afni"
-/** @brief comment::comment name string */
-#define CNIFTI_COMMENT_6_STR "comment"
-/** @brief xcede::xcede name string */
-#define CNIFTI_XCEDE_8_STR "xcede"
-/** @brief jimdiminfo::jimdiminfo name string */
-#define CNIFTI_JIMDIMINFO_10_STR "jimdiminfo"
-/** @brief workflow_fwds::workflow_fwds name string */
-#define CNIFTI_WORKFLOW_FWDS_12_STR "workflow_fwds"
-/** @brief freesurfer::freesurfer name string */
-#define CNIFTI_FREESURFER_14_STR "freesurfer"
-/** @brief pypickle::pypickle name string */
-#define CNIFTI_PYPICKLE_16_STR "pypickle"
-/** @brief mind_ident::mind_ident name string */
-#define CNIFTI_MIND_IDENT_18_STR "mind_ident"
-/** @brief b_value::b_value name string */
-#define CNIFTI_B_VALUE_20_STR "b_value"
-/** @brief spherical_direction::spherical_direction name string */
-#define CNIFTI_SPHERICAL_DIRECTION_22_STR "spherical_direction"
-/** @brief dt_component::dt_component name string */
-#define CNIFTI_DT_COMPONENT_24_STR "dt_component"
-/** @brief shc_degreeorder::shc_degreeorder name string */
-#define CNIFTI_SHC_DEGREEORDER_26_STR "shc_degreeorder"
-/** @brief voxbo::voxbo name string */
-#define CNIFTI_VOXBO_28_STR "voxbo"
-/** @brief caret::caret name string */
-#define CNIFTI_CARET_30_STR "caret"
-/** @brief cifti::cifti name string */
-#define CNIFTI_CIFTI_32_STR "cifti"
-/** @brief variable_frame_timing::variable_frame_timing name string */
-#define CNIFTI_VARIABLE_FRAME_TIMING_34_STR "variable_frame_timing"
-/** @brief eval::eval name string */
-#define CNIFTI_EVAL_38_STR "eval"
-/** @brief matlab::matlab name string */
-#define CNIFTI_MATLAB_40_STR "matlab"
-/** @brief quantiphyse::quantiphyse name string */
-#define CNIFTI_QUANTIPHYSE_42_STR "quantiphyse"
-/** @brief mrs::mrs name string */
-#define CNIFTI_MRS_44_STR "mrs"
+#define CNIFTI_ECODE_MRS 44
+/** @brief ecode::ignore name string */
+#define CNIFTI_ECODE_IGNORE_STR "ignore"
+/** @brief ecode::dicom name string */
+#define CNIFTI_ECODE_DICOM_STR "dicom"
+/** @brief ecode::afni name string */
+#define CNIFTI_ECODE_AFNI_STR "afni"
+/** @brief ecode::comment name string */
+#define CNIFTI_ECODE_COMMENT_STR "comment"
+/** @brief ecode::xcede name string */
+#define CNIFTI_ECODE_XCEDE_STR "xcede"
+/** @brief ecode::jimdiminfo name string */
+#define CNIFTI_ECODE_JIMDIMINFO_STR "jimdiminfo"
+/** @brief ecode::workflow_fwds name string */
+#define CNIFTI_ECODE_WORKFLOW_FWDS_STR "workflow_fwds"
+/** @brief ecode::freesurfer name string */
+#define CNIFTI_ECODE_FREESURFER_STR "freesurfer"
+/** @brief ecode::pypickle name string */
+#define CNIFTI_ECODE_PYPICKLE_STR "pypickle"
+/** @brief ecode::mind_ident name string */
+#define CNIFTI_ECODE_MIND_IDENT_STR "mind_ident"
+/** @brief ecode::b_value name string */
+#define CNIFTI_ECODE_B_VALUE_STR "b_value"
+/** @brief ecode::spherical_direction name string */
+#define CNIFTI_ECODE_SPHERICAL_DIRECTION_STR "spherical_direction"
+/** @brief ecode::dt_component name string */
+#define CNIFTI_ECODE_DT_COMPONENT_STR "dt_component"
+/** @brief ecode::shc_degreeorder name string */
+#define CNIFTI_ECODE_SHC_DEGREEORDER_STR "shc_degreeorder"
+/** @brief ecode::voxbo name string */
+#define CNIFTI_ECODE_VOXBO_STR "voxbo"
+/** @brief ecode::caret name string */
+#define CNIFTI_ECODE_CARET_STR "caret"
+/** @brief ecode::cifti name string */
+#define CNIFTI_ECODE_CIFTI_STR "cifti"
+/** @brief ecode::variable_frame_timing name string */
+#define CNIFTI_ECODE_VARIABLE_FRAME_TIMING_STR "variable_frame_timing"
+/** @brief ecode::eval name string */
+#define CNIFTI_ECODE_EVAL_STR "eval"
+/** @brief ecode::matlab name string */
+#define CNIFTI_ECODE_MATLAB_STR "matlab"
+/** @brief ecode::quantiphyse name string */
+#define CNIFTI_ECODE_QUANTIPHYSE_STR "quantiphyse"
+/** @brief ecode::mrs name string */
+#define CNIFTI_ECODE_MRS_STR "mrs"
 
 /* Returns the name of the ecode value. */
 static inline const char *cnifti_ecode_name(const int32_t value) {
   switch (value) {
-    case CNIFTI_IGNORE_0: return CNIFTI_IGNORE_0_STR;
-    case CNIFTI_DICOM_2: return CNIFTI_DICOM_2_STR;
-    case CNIFTI_AFNI_4: return CNIFTI_AFNI_4_STR;
-    case CNIFTI_COMMENT_6: return CNIFTI_COMMENT_6_STR;
-    case CNIFTI_XCEDE_8: return CNIFTI_XCEDE_8_STR;
-    case CNIFTI_JIMDIMINFO_10: return CNIFTI_JIMDIMINFO_10_STR;
-    case CNIFTI_WORKFLOW_FWDS_12: return CNIFTI_WORKFLOW_FWDS_12_STR;
-    case CNIFTI_FREESURFER_14: return CNIFTI_FREESURFER_14_STR;
-    case CNIFTI_PYPICKLE_16: return CNIFTI_PYPICKLE_16_STR;
-    case CNIFTI_MIND_IDENT_18: return CNIFTI_MIND_IDENT_18_STR;
-    case CNIFTI_B_VALUE_20: return CNIFTI_B_VALUE_20_STR;
-    case CNIFTI_SPHERICAL_DIRECTION_22: return CNIFTI_SPHERICAL_DIRECTION_22_STR;
-    case CNIFTI_DT_COMPONENT_24: return CNIFTI_DT_COMPONENT_24_STR;
-    case CNIFTI_SHC_DEGREEORDER_26: return CNIFTI_SHC_DEGREEORDER_26_STR;
-    case CNIFTI_VOXBO_28: return CNIFTI_VOXBO_28_STR;
-    case CNIFTI_CARET_30: return CNIFTI_CARET_30_STR;
-    case CNIFTI_CIFTI_32: return CNIFTI_CIFTI_32_STR;
-    case CNIFTI_VARIABLE_FRAME_TIMING_34: return CNIFTI_VARIABLE_FRAME_TIMING_34_STR;
-    case CNIFTI_EVAL_38: return CNIFTI_EVAL_38_STR;
-    case CNIFTI_MATLAB_40: return CNIFTI_MATLAB_40_STR;
-    case CNIFTI_QUANTIPHYSE_42: return CNIFTI_QUANTIPHYSE_42_STR;
-    case CNIFTI_MRS_44: return CNIFTI_MRS_44_STR;
+    case CNIFTI_ECODE_IGNORE: return CNIFTI_ECODE_IGNORE_STR;
+    case CNIFTI_ECODE_DICOM: return CNIFTI_ECODE_DICOM_STR;
+    case CNIFTI_ECODE_AFNI: return CNIFTI_ECODE_AFNI_STR;
+    case CNIFTI_ECODE_COMMENT: return CNIFTI_ECODE_COMMENT_STR;
+    case CNIFTI_ECODE_XCEDE: return CNIFTI_ECODE_XCEDE_STR;
+    case CNIFTI_ECODE_JIMDIMINFO: return CNIFTI_ECODE_JIMDIMINFO_STR;
+    case CNIFTI_ECODE_WORKFLOW_FWDS: return CNIFTI_ECODE_WORKFLOW_FWDS_STR;
+    case CNIFTI_ECODE_FREESURFER: return CNIFTI_ECODE_FREESURFER_STR;
+    case CNIFTI_ECODE_PYPICKLE: return CNIFTI_ECODE_PYPICKLE_STR;
+    case CNIFTI_ECODE_MIND_IDENT: return CNIFTI_ECODE_MIND_IDENT_STR;
+    case CNIFTI_ECODE_B_VALUE: return CNIFTI_ECODE_B_VALUE_STR;
+    case CNIFTI_ECODE_SPHERICAL_DIRECTION: return CNIFTI_ECODE_SPHERICAL_DIRECTION_STR;
+    case CNIFTI_ECODE_DT_COMPONENT: return CNIFTI_ECODE_DT_COMPONENT_STR;
+    case CNIFTI_ECODE_SHC_DEGREEORDER: return CNIFTI_ECODE_SHC_DEGREEORDER_STR;
+    case CNIFTI_ECODE_VOXBO: return CNIFTI_ECODE_VOXBO_STR;
+    case CNIFTI_ECODE_CARET: return CNIFTI_ECODE_CARET_STR;
+    case CNIFTI_ECODE_CIFTI: return CNIFTI_ECODE_CIFTI_STR;
+    case CNIFTI_ECODE_VARIABLE_FRAME_TIMING: return CNIFTI_ECODE_VARIABLE_FRAME_TIMING_STR;
+    case CNIFTI_ECODE_EVAL: return CNIFTI_ECODE_EVAL_STR;
+    case CNIFTI_ECODE_MATLAB: return CNIFTI_ECODE_MATLAB_STR;
+    case CNIFTI_ECODE_QUANTIPHYSE: return CNIFTI_ECODE_QUANTIPHYSE_STR;
+    case CNIFTI_ECODE_MRS: return CNIFTI_ECODE_MRS_STR;
   default: return NULL;
   }
 }
 /* Returns the ecode value from its name. */
 static inline int32_t cnifti_ecode_from_name(const char *t_ecode) {
   if (t_ecode == NULL) return -1;
-  if (strcmp(t_ecode, CNIFTI_IGNORE_0_STR) == 0) return CNIFTI_IGNORE_0;
-    else if (strcmp(t_ecode, CNIFTI_IGNORE_0_STR) == 0) return CNIFTI_IGNORE_0;
-    else if (strcmp(t_ecode, CNIFTI_DICOM_2_STR) == 0) return CNIFTI_DICOM_2;
-    else if (strcmp(t_ecode, CNIFTI_AFNI_4_STR) == 0) return CNIFTI_AFNI_4;
-    else if (strcmp(t_ecode, CNIFTI_COMMENT_6_STR) == 0) return CNIFTI_COMMENT_6;
-    else if (strcmp(t_ecode, CNIFTI_XCEDE_8_STR) == 0) return CNIFTI_XCEDE_8;
-    else if (strcmp(t_ecode, CNIFTI_JIMDIMINFO_10_STR) == 0) return CNIFTI_JIMDIMINFO_10;
-    else if (strcmp(t_ecode, CNIFTI_WORKFLOW_FWDS_12_STR) == 0) return CNIFTI_WORKFLOW_FWDS_12;
-    else if (strcmp(t_ecode, CNIFTI_FREESURFER_14_STR) == 0) return CNIFTI_FREESURFER_14;
-    else if (strcmp(t_ecode, CNIFTI_PYPICKLE_16_STR) == 0) return CNIFTI_PYPICKLE_16;
-    else if (strcmp(t_ecode, CNIFTI_MIND_IDENT_18_STR) == 0) return CNIFTI_MIND_IDENT_18;
-    else if (strcmp(t_ecode, CNIFTI_B_VALUE_20_STR) == 0) return CNIFTI_B_VALUE_20;
-    else if (strcmp(t_ecode, CNIFTI_SPHERICAL_DIRECTION_22_STR) == 0) return CNIFTI_SPHERICAL_DIRECTION_22;
-    else if (strcmp(t_ecode, CNIFTI_DT_COMPONENT_24_STR) == 0) return CNIFTI_DT_COMPONENT_24;
-    else if (strcmp(t_ecode, CNIFTI_SHC_DEGREEORDER_26_STR) == 0) return CNIFTI_SHC_DEGREEORDER_26;
-    else if (strcmp(t_ecode, CNIFTI_VOXBO_28_STR) == 0) return CNIFTI_VOXBO_28;
-    else if (strcmp(t_ecode, CNIFTI_CARET_30_STR) == 0) return CNIFTI_CARET_30;
-    else if (strcmp(t_ecode, CNIFTI_CIFTI_32_STR) == 0) return CNIFTI_CIFTI_32;
-    else if (strcmp(t_ecode, CNIFTI_VARIABLE_FRAME_TIMING_34_STR) == 0) return CNIFTI_VARIABLE_FRAME_TIMING_34;
-    else if (strcmp(t_ecode, CNIFTI_EVAL_38_STR) == 0) return CNIFTI_EVAL_38;
-    else if (strcmp(t_ecode, CNIFTI_MATLAB_40_STR) == 0) return CNIFTI_MATLAB_40;
-    else if (strcmp(t_ecode, CNIFTI_QUANTIPHYSE_42_STR) == 0) return CNIFTI_QUANTIPHYSE_42;
-    else if (strcmp(t_ecode, CNIFTI_MRS_44_STR) == 0) return CNIFTI_MRS_44;
+  if (strcmp(t_ecode, CNIFTI_ECODE_IGNORE_STR) == 0) return CNIFTI_ECODE_IGNORE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_IGNORE_STR) == 0) return CNIFTI_ECODE_IGNORE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_DICOM_STR) == 0) return CNIFTI_ECODE_DICOM;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_AFNI_STR) == 0) return CNIFTI_ECODE_AFNI;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_COMMENT_STR) == 0) return CNIFTI_ECODE_COMMENT;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_XCEDE_STR) == 0) return CNIFTI_ECODE_XCEDE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_JIMDIMINFO_STR) == 0) return CNIFTI_ECODE_JIMDIMINFO;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_WORKFLOW_FWDS_STR) == 0) return CNIFTI_ECODE_WORKFLOW_FWDS;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_FREESURFER_STR) == 0) return CNIFTI_ECODE_FREESURFER;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_PYPICKLE_STR) == 0) return CNIFTI_ECODE_PYPICKLE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_MIND_IDENT_STR) == 0) return CNIFTI_ECODE_MIND_IDENT;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_B_VALUE_STR) == 0) return CNIFTI_ECODE_B_VALUE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_SPHERICAL_DIRECTION_STR) == 0) return CNIFTI_ECODE_SPHERICAL_DIRECTION;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_DT_COMPONENT_STR) == 0) return CNIFTI_ECODE_DT_COMPONENT;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_SHC_DEGREEORDER_STR) == 0) return CNIFTI_ECODE_SHC_DEGREEORDER;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_VOXBO_STR) == 0) return CNIFTI_ECODE_VOXBO;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_CARET_STR) == 0) return CNIFTI_ECODE_CARET;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_CIFTI_STR) == 0) return CNIFTI_ECODE_CIFTI;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_VARIABLE_FRAME_TIMING_STR) == 0) return CNIFTI_ECODE_VARIABLE_FRAME_TIMING;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_EVAL_STR) == 0) return CNIFTI_ECODE_EVAL;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_MATLAB_STR) == 0) return CNIFTI_ECODE_MATLAB;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_QUANTIPHYSE_STR) == 0) return CNIFTI_ECODE_QUANTIPHYSE;
+    else if (strcmp(t_ecode, CNIFTI_ECODE_MRS_STR) == 0) return CNIFTI_ECODE_MRS;
   return -1;
 }/* Datatype size */
 
 /** @brief dt unknown size (bytes) */
-#define CNIFTI_UNKNOWN_0_SIZE 0
+#define CNIFTI_DT_UNKNOWN_SIZE 0
 /** @brief dt binary size (bytes) */
-#define CNIFTI_BINARY_1_SIZE 0
+#define CNIFTI_DT_BINARY_SIZE 0
 /** @brief dt uint8 size (bytes) */
-#define CNIFTI_UINT8_2_SIZE 1
+#define CNIFTI_DT_UINT8_SIZE 1
 /** @brief dt int16 size (bytes) */
-#define CNIFTI_INT16_4_SIZE 2
+#define CNIFTI_DT_INT16_SIZE 2
 /** @brief dt int32 size (bytes) */
-#define CNIFTI_INT32_8_SIZE 4
+#define CNIFTI_DT_INT32_SIZE 4
 /** @brief dt float32 size (bytes) */
-#define CNIFTI_FLOAT32_16_SIZE 4
+#define CNIFTI_DT_FLOAT32_SIZE 4
 /** @brief dt complex64 size (bytes) */
-#define CNIFTI_COMPLEX64_32_SIZE 8
+#define CNIFTI_DT_COMPLEX64_SIZE 8
 /** @brief dt float64 size (bytes) */
-#define CNIFTI_FLOAT64_64_SIZE 8
+#define CNIFTI_DT_FLOAT64_SIZE 8
 /** @brief dt rgb24 size (bytes) */
-#define CNIFTI_RGB24_128_SIZE 3
+#define CNIFTI_DT_RGB24_SIZE 3
 /** @brief dt int8 size (bytes) */
-#define CNIFTI_INT8_256_SIZE 1
+#define CNIFTI_DT_INT8_SIZE 1
 /** @brief dt unit16 size (bytes) */
-#define CNIFTI_UNIT16_512_SIZE 2
+#define CNIFTI_DT_UNIT16_SIZE 2
 /** @brief dt uint32 size (bytes) */
-#define CNIFTI_UINT32_768_SIZE 4
+#define CNIFTI_DT_UINT32_SIZE 4
 /** @brief dt int64 size (bytes) */
-#define CNIFTI_INT64_1024_SIZE 8
+#define CNIFTI_DT_INT64_SIZE 8
 /** @brief dt uint64 size (bytes) */
-#define CNIFTI_UINT64_1280_SIZE 8
+#define CNIFTI_DT_UINT64_SIZE 8
 /** @brief dt float128 size (bytes) */
-#define CNIFTI_FLOAT128_1536_SIZE 16
+#define CNIFTI_DT_FLOAT128_SIZE 16
 /** @brief dt complex128 size (bytes) */
-#define CNIFTI_COMPLEX128_1792_SIZE 16
+#define CNIFTI_DT_COMPLEX128_SIZE 16
 /** @brief dt complex256 size (bytes) */
-#define CNIFTI_COMPLEX256_2048_SIZE 32
+#define CNIFTI_DT_COMPLEX256_SIZE 32
 /** @brief dt rgba32 size (bytes) */
-#define CNIFTI_RGBA32_2304_SIZE 4
+#define CNIFTI_DT_RGBA32_SIZE 4
 
-//// Nifti headers ////
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// Nifti headers /////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_n1_header_t) == 348, "nifti1 header size is not 348 bytes");
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_n2_header_t) == 540, "nifti2 header size is not 540 bytes");
@@ -1079,38 +1170,40 @@ static inline int32_t cnifti_n2_header_spatial_units(const cnifti_n2_header_t *t
 /* Computed header field temporal_units */
 static inline int32_t cnifti_n2_header_temporal_units(const cnifti_n2_header_t *t_n2_header) {
   return t_n2_header->xyzt_units & 56;
-}CNIFTI_STATIC_ASSERT(sizeof(cnifti_extension_indicator_t) == 4, "extension header size is not 4 bytes");
+}
+CNIFTI_STATIC_ASSERT(sizeof(cnifti_extension_indicator_t) == 4, "extension header size is not 4 bytes");
 CNIFTI_STATIC_ASSERT(sizeof(cnifti_extension_header_t) == 8, "extension header size is not 8 bytes");
-
 /** @brief Nifti header union */
 typedef union cnifti_header_t {
   cnifti_n1_header_t n1_header;
     cnifti_n2_header_t n2_header;
   } cnifti_header_t;
 
-//// Implementation ////
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// Implementation ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 /** @brief Get datatype size in bytes */
 static inline int32_t cnifti_dt_size(int32_t t_dt) {
   switch (t_dt) {
-    case CNIFTI_UNKNOWN_0: return CNIFTI_UNKNOWN_0_SIZE;
-    case CNIFTI_BINARY_1: return CNIFTI_BINARY_1_SIZE;
-    case CNIFTI_UINT8_2: return CNIFTI_UINT8_2_SIZE;
-    case CNIFTI_INT16_4: return CNIFTI_INT16_4_SIZE;
-    case CNIFTI_INT32_8: return CNIFTI_INT32_8_SIZE;
-    case CNIFTI_FLOAT32_16: return CNIFTI_FLOAT32_16_SIZE;
-    case CNIFTI_COMPLEX64_32: return CNIFTI_COMPLEX64_32_SIZE;
-    case CNIFTI_FLOAT64_64: return CNIFTI_FLOAT64_64_SIZE;
-    case CNIFTI_RGB24_128: return CNIFTI_RGB24_128_SIZE;
-    case CNIFTI_INT8_256: return CNIFTI_INT8_256_SIZE;
-    case CNIFTI_UNIT16_512: return CNIFTI_UNIT16_512_SIZE;
-    case CNIFTI_UINT32_768: return CNIFTI_UINT32_768_SIZE;
-    case CNIFTI_INT64_1024: return CNIFTI_INT64_1024_SIZE;
-    case CNIFTI_UINT64_1280: return CNIFTI_UINT64_1280_SIZE;
-    case CNIFTI_FLOAT128_1536: return CNIFTI_FLOAT128_1536_SIZE;
-    case CNIFTI_COMPLEX128_1792: return CNIFTI_COMPLEX128_1792_SIZE;
-    case CNIFTI_COMPLEX256_2048: return CNIFTI_COMPLEX256_2048_SIZE;
-    case CNIFTI_RGBA32_2304: return CNIFTI_RGBA32_2304_SIZE;
+    case CNIFTI_DT_UNKNOWN: return CNIFTI_DT_UNKNOWN_SIZE;
+    case CNIFTI_DT_BINARY: return CNIFTI_DT_BINARY_SIZE;
+    case CNIFTI_DT_UINT8: return CNIFTI_DT_UINT8_SIZE;
+    case CNIFTI_DT_INT16: return CNIFTI_DT_INT16_SIZE;
+    case CNIFTI_DT_INT32: return CNIFTI_DT_INT32_SIZE;
+    case CNIFTI_DT_FLOAT32: return CNIFTI_DT_FLOAT32_SIZE;
+    case CNIFTI_DT_COMPLEX64: return CNIFTI_DT_COMPLEX64_SIZE;
+    case CNIFTI_DT_FLOAT64: return CNIFTI_DT_FLOAT64_SIZE;
+    case CNIFTI_DT_RGB24: return CNIFTI_DT_RGB24_SIZE;
+    case CNIFTI_DT_INT8: return CNIFTI_DT_INT8_SIZE;
+    case CNIFTI_DT_UNIT16: return CNIFTI_DT_UNIT16_SIZE;
+    case CNIFTI_DT_UINT32: return CNIFTI_DT_UINT32_SIZE;
+    case CNIFTI_DT_INT64: return CNIFTI_DT_INT64_SIZE;
+    case CNIFTI_DT_UINT64: return CNIFTI_DT_UINT64_SIZE;
+    case CNIFTI_DT_FLOAT128: return CNIFTI_DT_FLOAT128_SIZE;
+    case CNIFTI_DT_COMPLEX128: return CNIFTI_DT_COMPLEX128_SIZE;
+    case CNIFTI_DT_COMPLEX256: return CNIFTI_DT_COMPLEX256_SIZE;
+    case CNIFTI_DT_RGBA32: return CNIFTI_DT_RGBA32_SIZE;
   default: return 0;
   }
 }
@@ -1135,8 +1228,8 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       "intent_p1       : %f\n"
       "intent_p2       : %f\n"
       "intent_p3       : %f\n"
-      "intent_code     : %i\n"
-      "datatype        : %i\n"
+      "intent_code     : %s (%i)\n"
+      "datatype        : %s (%i)\n"
       "bitpix          : %i\n"
       "slice_start     : %i\n"
       "pixdim          : [ %f, %f, %f, %f, %f, %f, %f, %f ]\n"
@@ -1144,7 +1237,7 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       "scl_slope       : %f\n"
       "scl_inter       : %f\n"
       "slice_end       : %i\n"
-      "slice_code      : %i\n"
+      "slice_code      : %s (%i)\n"
       "xyzt_units      : %i\n"
       "cal_max         : %f\n"
       "cal_min         : %f\n"
@@ -1154,8 +1247,8 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       "glmin           : %i\n"
       "descrip         : '%.80s'\n"
       "aux_file        : '%.24s'\n"
-      "qform_code      : %i\n"
-      "sform_code      : %i\n"
+      "qform_code      : %s (%i)\n"
+      "sform_code      : %s (%i)\n"
       "quatern_b       : %f\n"
       "quatern_c       : %f\n"
       "quatern_d       : %f\n"
@@ -1192,7 +1285,9 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       t_n1_header->intent_p2,
       t_n1_header->intent_p3,
       (intent_intent_code == NULL ? "<non standard>" : intent_intent_code),
+      t_n1_header->intent_code,
       (dt_datatype == NULL ? "<non standard>" : dt_datatype),
+      t_n1_header->datatype,
       t_n1_header->bitpix,
       t_n1_header->slice_start,
       t_n1_header->pixdim[0],
@@ -1208,6 +1303,7 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       t_n1_header->scl_inter,
       t_n1_header->slice_end,
       (slice_slice_code == NULL ? "<non standard>" : slice_slice_code),
+      t_n1_header->slice_code,
       t_n1_header->xyzt_units,
       t_n1_header->cal_max,
       t_n1_header->cal_min,
@@ -1218,7 +1314,9 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       t_n1_header->descrip,
       t_n1_header->aux_file,
       (xform_qform_code == NULL ? "<non standard>" : xform_qform_code),
+      t_n1_header->qform_code,
       (xform_sform_code == NULL ? "<non standard>" : xform_sform_code),
+      t_n1_header->sform_code,
       t_n1_header->quatern_b,
       t_n1_header->quatern_c,
       t_n1_header->quatern_d,
@@ -1239,9 +1337,9 @@ static inline void cnifti_n1_header_print(const cnifti_n1_header_t *t_n1_header)
       t_n1_header->srow_z[3],
       t_n1_header->intent_name,
       t_n1_header->magic,
-      t_n1_header->magic,
-      t_n1_header->magic,
-      t_n1_header->magic,
+      cnifti_n1_header_frequency_dim(t_n1_header),
+      cnifti_n1_header_phase_dim(t_n1_header),
+      cnifti_n1_header_slice_dim(t_n1_header),
       (units_spatial_units == NULL ? "<non standard>" : units_spatial_units),
       cnifti_n1_header_spatial_units(t_n1_header),
       (units_temporal_units == NULL ? "<non standard>" : units_temporal_units),
@@ -1261,7 +1359,7 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       "sizeof_hdr      : %i\n"
       "magic           : '%.4s'\n"
       "magic2          : [ %i, %i, %i, %i ]\n"
-      "datatype        : %i\n"
+      "datatype        : %s (%i)\n"
       "bitpix          : %i\n"
       "dim             : [ %li, %li, %li, %li, %li, %li, %li, %li ]\n"
       "intent_p1       : %f\n"
@@ -1279,8 +1377,8 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       "slice_end       : %li\n"
       "descrip         : '%.80s'\n"
       "aux_file        : '%.24s'\n"
-      "qform_code      : %i\n"
-      "sform_code      : %i\n"
+      "qform_code      : %s (%i)\n"
+      "sform_code      : %s (%i)\n"
       "quatern_b       : %f\n"
       "quatern_c       : %f\n"
       "quatern_d       : %f\n"
@@ -1290,9 +1388,9 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       "srow_x          : [ %f, %f, %f, %f ]\n"
       "srow_y          : [ %f, %f, %f, %f ]\n"
       "srow_z          : [ %f, %f, %f, %f ]\n"
-      "slice_code      : %i\n"
+      "slice_code      : %s (%i)\n"
       "xyzt_units      : %i\n"
-      "intent_code     : %i\n"
+      "intent_code     : %s (%i)\n"
       "intent_name     : '%.16s'\n"
       "dim_info        : %i\n"
       "unused_str      : '%.15s'\n"
@@ -1309,6 +1407,7 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       t_n2_header->magic2[2],
       t_n2_header->magic2[3],
       (dt_datatype == NULL ? "<non standard>" : dt_datatype),
+      t_n2_header->datatype,
       t_n2_header->bitpix,
       t_n2_header->dim[0],
       t_n2_header->dim[1],
@@ -1341,7 +1440,9 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       t_n2_header->descrip,
       t_n2_header->aux_file,
       (xform_qform_code == NULL ? "<non standard>" : xform_qform_code),
+      t_n2_header->qform_code,
       (xform_sform_code == NULL ? "<non standard>" : xform_sform_code),
+      t_n2_header->sform_code,
       t_n2_header->quatern_b,
       t_n2_header->quatern_c,
       t_n2_header->quatern_d,
@@ -1361,14 +1462,16 @@ static inline void cnifti_n2_header_print(const cnifti_n2_header_t *t_n2_header)
       t_n2_header->srow_z[2],
       t_n2_header->srow_z[3],
       (slice_slice_code == NULL ? "<non standard>" : slice_slice_code),
+      t_n2_header->slice_code,
       t_n2_header->xyzt_units,
       (intent_intent_code == NULL ? "<non standard>" : intent_intent_code),
+      t_n2_header->intent_code,
       t_n2_header->intent_name,
       t_n2_header->dim_info,
       t_n2_header->unused_str,
-      t_n2_header->unused_str,
-      t_n2_header->unused_str,
-      t_n2_header->unused_str,
+      cnifti_n2_header_frequency_dim(t_n2_header),
+      cnifti_n2_header_phase_dim(t_n2_header),
+      cnifti_n2_header_slice_dim(t_n2_header),
       (units_spatial_units == NULL ? "<non standard>" : units_spatial_units),
       cnifti_n2_header_spatial_units(t_n2_header),
       (units_temporal_units == NULL ? "<non standard>" : units_temporal_units),

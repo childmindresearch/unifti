@@ -1,30 +1,4 @@
-/** 
-* Modified from https://gist.github.com/jtbr/7a43e6281e6cca353b33ee501421860c
-*/
-
-#ifndef ENDIANNESS_H_
-#define ENDIANNESS_H_
-
-#if !defined(CNIFTI_STATIC_ASSERT)
-#if __STDC_VERSION__ >= 201112L
-#include <assert.h>
-#define CNIFTI_STATIC_ASSERT(COND,MSG) _Static_assert(COND,MSG)
-#else
-#define CNIFTI_STATIC_ASSERT(COND,MSG)
-#endif
-#endif
-
-#include <stdlib.h>
-#include <stdint.h>
-#ifdef __cplusplus
-#include <cstring> // for memcpy
-#endif
-
-
-#if defined(bswap16) || defined(bswap32) || defined(bswap64) || defined(bswapf) || defined(bswapd)
-#  error "unexpected define!" // freebsd may define these; probably just need to undefine them
-#endif
-
+C_BSWAP = """
 /* Define byte-swap functions, using fast processor-native built-ins where possible */
 #if defined(_MSC_VER) // needs to be first because msvc doesn't short-circuit after failing defined(__has_builtin)
 #  define bswap16(x)     _byteswap_ushort((x))
@@ -102,5 +76,4 @@ static inline double bswapd(double d) {
     return conversion_union.asDouble;
 #endif
 }
-
-#endif //ENDIANNESS_H_
+""".strip()

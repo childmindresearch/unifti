@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 C_INDENT = "  "
@@ -105,7 +105,10 @@ def big_comment(*args, **kwargs):
     if "\n" in s:
         s = s.replace("\n", " ////\n//// ")
 
-    return f"//// {s} ////"
+    sep = '/' * ((80 - len(s) - 2)//2) 
+
+
+    return f'{"/"*80}\n{sep} {s} {"/" if len(s) % 2 else ""}{sep}\n{"/"*80}'
 
 
 def dostring_quote_code(s: str):
@@ -115,12 +118,23 @@ def dostring_quote_code(s: str):
 class CPrintfBuilder:
     def __init__(self, printf: str = "printf"):
         self.printf = printf
-        self.args: List[str] = []
-        self.fbuf: str = ""
+        self._args: List[Tuple[str, List[str]]] = []
+
+    def add(self, fstr: str, *args):
+        if fstr.count('%') != len(args):
+            raise Exception(f'Format string \'{fstr}\' does not have same number of arguments as {args}')
+        self._args.append((fstr, args))
 
     def build(self) -> str:
-        args_formatted = f",\n{C_INDENT*2}".join(self.args)
-        fbuf_formatted = f'\\n"\n{C_INDENT*2}"'.join(self.fbuf.split("\\n"))
+        fbuf = ''
+        args = []
+        for fstr, fstr_args in self._args:
+            for arg in fstr_args:
+                args.append(arg)
+            fbuf += fstr
+
+        args_formatted = f",\n{C_INDENT*2}".join(args)
+        fbuf_formatted = f'\\n"\n{C_INDENT*2}"'.join(fbuf.split("\\n"))
         return f'{C_INDENT}{self.printf}(\n{C_INDENT*2}"{fbuf_formatted}",\n{C_INDENT*2}{args_formatted}\n{C_INDENT})'
 
 
@@ -221,12 +235,12 @@ class CStruct:
         self.fields = fields
 
     def write(self, buf: CHeaderBuilder, memory_packing: bool = False) -> str:
-        fields_str = ";\n".join(self.fields)
+        fields_str = "\n".join([f'{f};' for f in self.fields])
         if memory_packing:
             buf.header += section(
                 f"""
 #pragma pack(push, 1)
-typedef struct {{
+typedef struct {cn_struct_type(self.name)} {{
 {cindent(fields_str)}
 }} {cn_struct_type(self.name)};
 #pragma pack(pop)
@@ -235,7 +249,7 @@ typedef struct {{
         else:
             buf.header += section(
                 f"""
-typedef struct {{
+typedef struct {cn_struct_type(self.name)} {{
 {cindent(fields_str)}
 }} {cn_struct_type(self.name)};
 """

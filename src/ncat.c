@@ -92,6 +92,8 @@ int main(int argc, char* argv[]) {
         printf("%s\n", ext_data);
         if (ext_data_size < ext_header.esize - 8) printf("...[truncated]\n");
         printf("--------------\n");
+    } else {
+        printf("File has no extension data.\n");
     }
 
     return 1;

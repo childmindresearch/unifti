@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import yaml
 from . import cg, utils
 
@@ -36,11 +36,12 @@ KSY_BYTESWAPPABLE = ["s1", "u1", "s2", "u2", "s4", "u4", "s8", "u8", "f4", "f8"]
 @dataclass
 class KsyEnumValue:
     name: str
+    var: str
     value: int
     doc: Optional[str] = None
 
     def cn(self):
-        return cg.cn_enum_value(self.name, self.value)
+        return cg.cn_enum_value(self.name, self.var)
 
     def cn_str(self):
         return f"{self.cn()}_STR"
@@ -48,16 +49,16 @@ class KsyEnumValue:
     def cdefine(self):
         s = ""
         if self.doc is not None:
-            s += cg.docstring(brief=f"{self.doc} ({self.name}::{self.name})")
+            s += cg.docstring(brief=f"{self.doc} ({self.name}::{self.var})")
         else:
-            s += cg.docstring(brief=f"{self.name}::{self.name}")
+            s += cg.docstring(brief=f"{self.name}::{self.var}")
         return f"{s}\n#define {self.cn()} {self.value}"
 
     def cdefine_str(self):
         return (
-            cg.docstring(brief=f"{self.name}::{self.name} name string")
+            cg.docstring(brief=f"{self.name}::{self.var} name string")
             + "\n"
-            + f'#define {self.cn_str()} "{self.name}"'
+            + f'#define {self.cn_str()} "{self.var}"'
         )
 
 
@@ -74,14 +75,15 @@ class KsyEnum:
             if isinstance(var_name, dict):
                 self.values.append(
                     KsyEnumValue(
-                        name=var_name["id"],
+                        name=self.name,
+                        var=var_name["id"],
                         value=var_value,
                         doc=var_name["doc"] if "doc" in var_name else None,
                     )
                 )
             else:
                 self.values.append(
-                    KsyEnumValue(name=var_name, value=var_value, doc=None)
+                    KsyEnumValue(name=self.name, var=var_name, value=var_value, doc=None)
                 )
 
     def cdefine_all(self, include_str=True):
@@ -165,9 +167,11 @@ class KsyStructField:
 
     def __init__(self, ksy_field: dict):
         self.name = ksy_field["id"]
-        self.type = 'u1' if 'type' not in ksy_field else ksy_field["type"]
+        self.type = "u1" if "type" not in ksy_field else ksy_field["type"]
 
-        if self.type == "str":
+        if "type" not in ksy_field:
+            self.arr_len = ksy_field["size"]
+        elif self.type == "str":
             self.str_len = ksy_field["size"]
         elif "repeat" in ksy_field:
             self.arr_len = ksy_field["repeat-expr"]
@@ -193,7 +197,9 @@ class KsyStructField:
             return f"{KSY2C_TYPE[self.type]}"
 
     def ctype_fprint(self):
-        if self.type == "str":
+        if self.enum is not None:
+            return f"%s (%i)"
+        elif self.type == "str":
             return f"'%.{self.str_len}s'"
         elif self.arr_len is not None:
             arr_strs = [f"{KSY2C_FPRINT[self.type]}" for _ in range(self.arr_len)]
@@ -226,18 +232,18 @@ class KsyStructCompField:
             return f"%s (%i)"
         else:
             return f"%i"
-        
-    def cexpr(self, ksy_struct: 'KsyStruct'):
-        comp_expr_tokens = self.expr.split(' ')
-        cexpr = ''
+
+    def cexpr(self, ksy_struct: "KsyStruct"):
+        comp_expr_tokens = self.expr.split(" ")
+        cexpr = ""
         for tok in comp_expr_tokens:
             if tok in [f.name for f in ksy_struct.iter_fields()]:
-                cexpr += f'{cg.cn_arg(ksy_struct.name)}->{tok}'
+                cexpr += f"{cg.cn_arg(ksy_struct.name)}->{tok}"
             elif utils.is_int_literal(tok):
                 cexpr += str(utils.int_literal(tok))
             else:
                 cexpr += tok
-            cexpr += ' '
+            cexpr += " "
         return cexpr.strip()
 
 
@@ -263,44 +269,56 @@ def build_print_struct(
 ) -> cg.CFunc:
     func_body_prefix = ""
 
-    printn1 = cg.CPrintfBuilder(printf=printf_alias)
-    print_dict = {}
+    brintf_builder = cg.CPrintfBuilder(printf=printf_alias)
+    print_table: List[Tuple[str, str, List[str]]] = []
 
     for field in ksy_struct.iter_fields():
         field_access = f"{cg.cn_arg(ksy_struct.name)}->{field.name}"
-        print_dict[field.name] = field.ctype_fprint()
+
+        pt_name = field.name
+        pt_value = field.ctype_fprint()
+        pt_args = []
 
         if field.arr_len is not None:
             for i in range(field.arr_len):
-                printn1.args.append(f"{field_access}[{i}]")
+                pt_args.append(f"{field_access}[{i}]")
         elif field.enum is not None:
             enum_lookup_var = f"{field.enum}_{field.name}"
             func_body_prefix += f"const char *{enum_lookup_var} = {cg.cn_func_name(field.enum)}_name({field_access});\n"
-            printn1.args.append(
+            pt_args.append(
                 f'({enum_lookup_var} == NULL ? "{enum_unknown}" : {enum_lookup_var})'
             )
+            pt_args.append(field_access)
         else:
-            printn1.args.append(field_access)
+            pt_args.append(field_access)
+
+        print_table.append((pt_name, pt_value, pt_args))
 
     for field in ksy_struct.iter_comp_fields():
-        print_dict[f"*{field.name}"] = field.ctype_fprint()
+        pt_name = f"*{field.name}"
+        pt_value = field.ctype_fprint()
+        pt_args = []
+
+        field_access = f"{cg.cn_func_name(f'{ksy_struct.name}_{field.name}')}({cg.cn_arg(ksy_struct.name)})"
+
         if field.enum is not None:
-            field_access = f"{cg.cn_func_name(f'{ksy_struct.name}_{field.name}')}({cg.cn_arg(ksy_struct.name)})"
             enum_lookup_var = f"{field.enum}_{field.name}"
             func_body_prefix += f"const char *{enum_lookup_var} = {cg.cn_func_name(field.enum)}_name({field_access});\n"
-            printn1.args.append(
+            pt_args.append(
                 f'({enum_lookup_var} == NULL ? "{enum_unknown}" : {enum_lookup_var})'
             )
-        printn1.args.append(field_access)
+        pt_args.append(field_access)
 
-    max_key_len = max([len(k) for k in print_dict.keys()])
-    for k, v in print_dict.items():
-        printn1.fbuf += f"{k.ljust(max_key_len)} : {v}\\n"
+        print_table.append((pt_name, pt_value, pt_args))
+
+    max_key_len = max([len(pt_name) for pt_name, _, _ in print_table])
+    for pt_name, pt_value, pt_args in print_table:
+        brintf_builder.add(f"{pt_name.ljust(max_key_len)} : {pt_value}\\n", *pt_args)
 
     return cg.CFunc(
         prefix=cg.comment(f"Utility function for printing {ksy_struct.name}."),
         signature=f"void {cg.cn_func_name(f'{ksy_struct.name}_print')}(const {cg.cn_struct_type(ksy_struct.name)} *{cg.cn_arg(ksy_struct.name)})",
-        body=f"{cg.ensure_linebreak(func_body_prefix)}{printn1.build()};",
+        body=f"{cg.ensure_linebreak(func_body_prefix)}{brintf_builder.build()};",
     )
 
 
@@ -340,37 +358,34 @@ def build_byteswap_struct(
 
 
 def build_struct(ksy_struct: KsyStruct) -> cg.CStruct:
-
     re = cg.CStruct(
         name=ksy_struct.name,
         fields=[],
     )
 
-
     for field in ksy_struct.iter_fields():
-        cdoc = ''
+        cdoc = ""
         if field.doc is not None:
             cdoc = field.doc
             if field.enum is not None:
                 cdoc += f' (enum: {cg.cn_enum_value(field.enum, "*")})'
 
-        re.fields.append(f'{cg.docstring(cdoc)}\n{field.cdef()}')
+        re.fields.append(f"{cg.docstring(cdoc)}\n{field.cdef()}")
 
     return re
 
-def build_comp_field_funcs(ksy_struct: KsyStruct) -> List[cg.CFunc]:
 
+def build_comp_field_funcs(ksy_struct: KsyStruct) -> List[cg.CFunc]:
     funcs: List[cg.CFunc] = []
 
     for field in ksy_struct.iter_comp_fields():
-
         comp_expr = field.cexpr(ksy_struct)
 
         funcs.append(
             cg.CFunc(
-                prefix=cg.comment(f'Computed header field {field.name}'),
+                prefix=cg.comment(f"Computed header field {field.name}"),
                 signature=f'int32_t {cg.cn_func_name(f"{ksy_struct.name}_{field.name}")}(const {cg.cn_struct_type(ksy_struct.name)} *{cg.cn_arg(ksy_struct.name)})',
-                body=f'return {comp_expr};'
+                body=f"return {comp_expr};",
             )
         )
 

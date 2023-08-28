@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import pathlib as pl
-from . import utils, cg, ksy
+from . import utils, cg, ksy, bswap
 
 PATH_ROOT = pl.Path(__file__).parent.parent
 PATH_DIST = PATH_ROOT / "src"
@@ -41,6 +41,8 @@ def build_n1header():
     printf_alias = cg.cn_define("printf")
     buf.header += f"\n\n#ifndef {printf_alias}\n#include <stdio.h>\n#define {printf_alias} printf\n#endif\n\n"
 
+
+
     # struct packing
 
     #buf.header += '\n'.join([
@@ -57,10 +59,13 @@ def build_n1header():
         '#include <string.h> // memcpy, strcmp'
     ])
 
-    
     # version
-    buf.body += f'\n/** @brief version */'
-    buf.body += f"\n#define {cg.cn_define('version')} {C_VERSION}"
+    buf.header += f'\n/** @brief version */'
+    buf.header += f"\n#define {cg.cn_define('version')} {C_VERSION}"
+
+    # byte swapping functions
+    buf.header += '\n' + bswap.C_BSWAP
+
 
 
     ks = ksy.KsyGrammar(PATH_NIFTI_KSY)
@@ -82,12 +87,12 @@ def build_n1header():
 
     ksy_enum_dt = ksy.KsyEnum('dt', ks.ksy)
     for enum in ksy_enum_dt.values:
-        buf.body += cg.docstring(brief=f'{ksy_enum_dt.name} {enum.name} size (bytes)') + '\n'
-        bitsize = utils.trailing_int(enum.name)
+        buf.body += cg.docstring(brief=f'{enum.name} {enum.var} size (bytes)') + '\n'
+        bitsize = utils.trailing_int(enum.var)
         if bitsize is None:
-            if enum.name == 'unknown':
+            if enum.var == 'unknown':
                 bitsize = 0
-            elif enum.name == 'binary':
+            elif enum.var == 'binary':
                 bitsize = 1  # annoying edge case
             else:
                 assert False
@@ -120,11 +125,11 @@ def build_n1header():
 
     # header extension definition
     ksy.build_struct(extension_indicator_struct).write(buf, memory_packing=False)
-    buf.body += f'{static_assert_alias}(sizeof({cg.cn_struct_type(extension_indicator_struct.name)}) == 4, "extension header size is not 4 bytes");\n'
+    buf.body += cg.section(f'{static_assert_alias}(sizeof({cg.cn_struct_type(extension_indicator_struct.name)}) == 4, "extension header size is not 4 bytes");')
 
     # header extension definition   
     ksy.build_struct(extension_header_struct).write(buf, memory_packing=False)
-    buf.body += f'{static_assert_alias}(sizeof({cg.cn_struct_type(extension_header_struct.name)}) == 8, "extension header size is not 8 bytes");\n'
+    buf.body += cg.section(f'{static_assert_alias}(sizeof({cg.cn_struct_type(extension_header_struct.name)}) == 8, "extension header size is not 8 bytes");')
 
     # header union
 
