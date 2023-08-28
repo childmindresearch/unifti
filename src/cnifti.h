@@ -307,8 +307,8 @@ typedef struct cnifti_extension_header_t {
 #define CNIFTI_DT_RGB24 128
 /** @brief dt::int8 */
 #define CNIFTI_DT_INT8 256
-/** @brief dt::unit16 */
-#define CNIFTI_DT_UNIT16 512
+/** @brief dt::uint16 */
+#define CNIFTI_DT_UINT16 512
 /** @brief dt::uint32 */
 #define CNIFTI_DT_UINT32 768
 /** @brief dt::int64 */
@@ -343,8 +343,8 @@ typedef struct cnifti_extension_header_t {
 #define CNIFTI_DT_RGB24_STR "rgb24"
 /** @brief dt::int8 name string */
 #define CNIFTI_DT_INT8_STR "int8"
-/** @brief dt::unit16 name string */
-#define CNIFTI_DT_UNIT16_STR "unit16"
+/** @brief dt::uint16 name string */
+#define CNIFTI_DT_UINT16_STR "uint16"
 /** @brief dt::uint32 name string */
 #define CNIFTI_DT_UINT32_STR "uint32"
 /** @brief dt::int64 name string */
@@ -373,7 +373,7 @@ static inline const char *cnifti_dt_name(const int32_t value) {
     case CNIFTI_DT_FLOAT64: return CNIFTI_DT_FLOAT64_STR;
     case CNIFTI_DT_RGB24: return CNIFTI_DT_RGB24_STR;
     case CNIFTI_DT_INT8: return CNIFTI_DT_INT8_STR;
-    case CNIFTI_DT_UNIT16: return CNIFTI_DT_UNIT16_STR;
+    case CNIFTI_DT_UINT16: return CNIFTI_DT_UINT16_STR;
     case CNIFTI_DT_UINT32: return CNIFTI_DT_UINT32_STR;
     case CNIFTI_DT_INT64: return CNIFTI_DT_INT64_STR;
     case CNIFTI_DT_UINT64: return CNIFTI_DT_UINT64_STR;
@@ -398,7 +398,7 @@ static inline int32_t cnifti_dt_from_name(const char *t_dt) {
     else if (strcmp(t_dt, CNIFTI_DT_FLOAT64_STR) == 0) return CNIFTI_DT_FLOAT64;
     else if (strcmp(t_dt, CNIFTI_DT_RGB24_STR) == 0) return CNIFTI_DT_RGB24;
     else if (strcmp(t_dt, CNIFTI_DT_INT8_STR) == 0) return CNIFTI_DT_INT8;
-    else if (strcmp(t_dt, CNIFTI_DT_UNIT16_STR) == 0) return CNIFTI_DT_UNIT16;
+    else if (strcmp(t_dt, CNIFTI_DT_UINT16_STR) == 0) return CNIFTI_DT_UINT16;
     else if (strcmp(t_dt, CNIFTI_DT_UINT32_STR) == 0) return CNIFTI_DT_UINT32;
     else if (strcmp(t_dt, CNIFTI_DT_INT64_STR) == 0) return CNIFTI_DT_INT64;
     else if (strcmp(t_dt, CNIFTI_DT_UINT64_STR) == 0) return CNIFTI_DT_UINT64;
@@ -1107,8 +1107,8 @@ static inline int32_t cnifti_ecode_from_name(const char *t_ecode) {
 #define CNIFTI_DT_RGB24_SIZE 3
 /** @brief dt int8 size (bytes) */
 #define CNIFTI_DT_INT8_SIZE 1
-/** @brief dt unit16 size (bytes) */
-#define CNIFTI_DT_UNIT16_SIZE 2
+/** @brief dt uint16 size (bytes) */
+#define CNIFTI_DT_UINT16_SIZE 2
 /** @brief dt uint32 size (bytes) */
 #define CNIFTI_DT_UINT32_SIZE 4
 /** @brief dt int64 size (bytes) */
@@ -1196,7 +1196,7 @@ static inline int32_t cnifti_dt_size(int32_t t_dt) {
     case CNIFTI_DT_FLOAT64: return CNIFTI_DT_FLOAT64_SIZE;
     case CNIFTI_DT_RGB24: return CNIFTI_DT_RGB24_SIZE;
     case CNIFTI_DT_INT8: return CNIFTI_DT_INT8_SIZE;
-    case CNIFTI_DT_UNIT16: return CNIFTI_DT_UNIT16_SIZE;
+    case CNIFTI_DT_UINT16: return CNIFTI_DT_UINT16_SIZE;
     case CNIFTI_DT_UINT32: return CNIFTI_DT_UINT32_SIZE;
     case CNIFTI_DT_INT64: return CNIFTI_DT_INT64_SIZE;
     case CNIFTI_DT_UINT64: return CNIFTI_DT_UINT64_SIZE;
