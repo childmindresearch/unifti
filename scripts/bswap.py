@@ -1,4 +1,5 @@
 C_BSWAP = """
+
 /* Define byte-swap functions, using fast processor-native built-ins where possible */
 #if defined(_MSC_VER) // needs to be first because msvc doesn't short-circuit after failing defined(__has_builtin)
 #  define bswap16(x)     _byteswap_ushort((x))
@@ -37,43 +38,20 @@ C_BSWAP = """
 
 //! Byte-swap 32-bit float
 static inline float bswapf(float f) {
-#ifdef __cplusplus
-    static_assert(sizeof(float) == sizeof(uint32_t), "Unexpected float format");
-    /* Problem: de-referencing float pointer as uint32_t breaks strict-aliasing rules for C++ and C, even if it normally works
-     *   uint32_t val = bswap32(*(reinterpret_cast<const uint32_t *>(&f)));
-     *   return *(reinterpret_cast<float *>(&val));
-     */
-    // memcpy approach is guaranteed to work in C & C++ and fn calls should be optimized out:
-    uint32_t asInt;
-    std::memcpy(&asInt, reinterpret_cast<const void *>(&f), sizeof(uint32_t));
-    asInt = bswap32(asInt);
-    std::memcpy(&f, reinterpret_cast<void *>(&asInt), sizeof(float));
-    return f;
-#else
-    CNIFTI_STATIC_ASSERT(sizeof(float) == sizeof(uint32_t), "Unexpected float format");
+    UNIFTI_STATIC_ASSERT(sizeof(float) == sizeof(uint32_t), "Unexpected float format");
     // union approach is guaranteed to work in C99 and later (but not in C++, though in practice it normally will):
     union { uint32_t asInt; float asFloat; } conversion_union;
     conversion_union.asFloat = f;
     conversion_union.asInt = bswap32(conversion_union.asInt);
     return conversion_union.asFloat;
-#endif
 }
 
 //! Byte-swap 64-bit double
 static inline double bswapd(double d) {
-#ifdef __cplusplus
-    static_assert(sizeof(double) == sizeof(uint64_t), "Unexpected double format");
-    uint64_t asInt;
-    std::memcpy(&asInt, reinterpret_cast<const void *>(&d), sizeof(uint64_t));
-    asInt = bswap64(asInt);
-    std::memcpy(&d, reinterpret_cast<void *>(&asInt), sizeof(double));
-    return d;
-#else
-    CNIFTI_STATIC_ASSERT(sizeof(double) == sizeof(uint64_t), "Unexpected double format");
+    UNIFTI_STATIC_ASSERT(sizeof(double) == sizeof(uint64_t), "Unexpected double format");
     union { uint64_t asInt; double asDouble; } conversion_union;
     conversion_union.asDouble = d;
     conversion_union.asInt = bswap64(conversion_union.asInt);
     return conversion_union.asDouble;
-#endif
 }
 """.strip()

@@ -390,3 +390,42 @@ def build_comp_field_funcs(ksy_struct: KsyStruct) -> List[cg.CFunc]:
         )
 
     return funcs
+
+
+def convert_struct(
+        struct_src: KsyStruct, 
+        struct_dest: KsyStruct, 
+        body_prefix: str, 
+        skip_field_names: List[str]
+):
+    arg_src = cg.cn_arg(struct_src.name)
+    arg_dest = cg.cn_arg(struct_dest.name)
+
+    body = body_prefix
+
+    for src_field in struct_src.iter_fields():
+        for dest_field in struct_dest.iter_fields():
+            if (src_field.name == dest_field.name and src_field.name not in skip_field_names):
+                src_accessor = f'{arg_src}->{src_field.name}'
+                dest_accessor = f'{arg_dest}->{dest_field.name}'
+
+                cast = '' if src_field.ctype() == dest_field.ctype() else f'({dest_field.ctype()}) '
+                cast = cast.replace(' *', '')
+
+                if src_field.arr_len is not None:
+                    assert src_field.arr_len == dest_field.arr_len
+                    body += f'\nfor (int i = 0; i < {src_field.arr_len}; ++i) {{ {dest_accessor}[i] = {cast}{src_accessor}[i]; }}'
+                elif src_field.str_len is not None:
+                    assert src_field.str_len == dest_field.str_len
+                    body += f'\nmemcpy({dest_accessor}, {src_accessor}, {src_field.str_len});'
+                else:
+                    body += f'\n{dest_accessor} = {cast}{src_accessor};'
+
+    return cg.CFunc(
+            signature=f'int32_t {cg.cn_func_name(f"{struct_src.name}_to_{struct_dest.name}")}(const {cg.cn_struct_type(struct_src.name)} *{cg.cn_arg(struct_src.name)}, {cg.cn_struct_type(struct_dest.name)} *{cg.cn_arg(struct_dest.name)})',
+            body=f"""
+{body}
+return 1;
+""",
+            prefix=cg.docstring(brief=f'Convert {struct_src.name} to {struct_dest.name}.'),
+        )

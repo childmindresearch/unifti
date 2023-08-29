@@ -3,11 +3,11 @@ import pathlib as pl
 from . import utils, cg, ksy, bswap
 
 PATH_ROOT = pl.Path(__file__).parent.parent
-PATH_DIST = PATH_ROOT / "src"
+PATH_DIST = PATH_ROOT / "include"
 PATH_NIFTI_KSY = PATH_ROOT / 'BrainParsers' / 'formats' / 'nifti.ksy'
 
 
-PROJECT_NAME = 'cnifti'
+PROJECT_NAME = 'unifti'
 C_VERSION = 1
 
 
@@ -15,6 +15,8 @@ C_VERSION = 1
 def main():
 
     cbuild = build_n1header()
+
+    PATH_DIST.mkdir(parents=True, exist_ok=True)
 
     with open(PATH_DIST / f'{cbuild.header_name}.h', 'w', encoding='utf8') as f:
         f.write(cbuild.build_header())
@@ -24,7 +26,6 @@ def build_n1header():
     buf = cg.CHeaderBuilder(
         header_name=PROJECT_NAME
     )
-
 
     # static assert
     static_assert_alias = cg.cn_define('static_assert')
@@ -52,12 +53,15 @@ def build_n1header():
     #])
 
     # standard types
-    buf.header += '\n'.join([
-        '#include <stddef.h> // NULL, size_t',
-        '#include <stdint.h> // int32_t, uint32_t, int64_t, uint64_t',
+    includes = [
+        '#include <stddef.h>  // NULL, size_t',
+        '#include <stdint.h>  // int32_t, uint32_t, int64_t, uint64_t',
         '#include <stdbool.h> // bool',
-        '#include <string.h> // memcpy, strcmp'
-    ])
+        '#include <string.h>  // memcpy, strcmp',
+        '#include <limits.h>  // INT_MAX'
+    ]
+    includes.sort()
+    buf.header += '\n'.join(includes)
 
     # version
     buf.header += f'\n/** @brief version */'
@@ -195,8 +199,8 @@ default: return -1;
     """
     Untested potentially faster version with perfect hashing (but less file validity guarantees):
     
-static inline int32_t cnifti_peek_fast(const uint32_t t_header_start) {
-  static int32_t lookup[7] = { -1, CNIFTI_PEEK_NIFTI2, -1, CNIFTI_PEEK_SWAP, CNIFTI_PEEK_NIFTI2 & CNIFTI_PEEK_SWAP, 0, -1};
+static inline int32_t unifti_peek_fast(const uint32_t t_header_start) {
+  static int32_t lookup[7] = { -1, UNIFTI_PEEK_NIFTI2, -1, UNIFTI_PEEK_SWAP, UNIFTI_PEEK_NIFTI2 & UNIFTI_PEEK_SWAP, 0, -1};
   return lookup[t_header_start % 7];
 }
 
@@ -222,8 +226,34 @@ int64_t size = {cg.cn_arg(ksy_struct.name)}->bitpix / 8;
 for (int i = 0; i < {cg.cn_arg(ksy_struct.name)}->dim[0]; ++i) {{ size *= {cg.cn_arg(ksy_struct.name)}->dim[i+1]; }}
 return size;""",
             prefix=cg.docstring(brief=f'Calculate {ksy_struct.name} data array size (in bytes).'),
-        ).write(buf, header_only=True)
+        ).write(buf)
 
+    # Convert between n1 and n2 headers
+
+    ksy.convert_struct(
+        struct_src=n1_header_struct,
+        struct_dest=n2_header_struct,
+        body_prefix='\n'.join([
+            f"{cg.cn_arg(n2_header_struct.name)}->sizeof_hdr = 540;",
+            f'memcpy(&{cg.cn_arg(n2_header_struct.name)}->magic, "n+2\\0", 4);',
+            f"const int8_t magic2[4] = {{ 0x0D, 0x0A, 0x1A, 0x0A }};",
+            f"memcpy(&{cg.cn_arg(n2_header_struct.name)}->magic2, magic2, 4);",
+            f"for (int i = 0; i < 15; ++i) {{ {cg.cn_arg(n2_header_struct.name)}->unused_str[i] = 0; }}"
+        ]),
+        skip_field_names=["sizeof_hdr", "magic"]
+    ).write(buf)
+
+    ksy.convert_struct(
+        struct_src=n2_header_struct,
+        struct_dest=n1_header_struct,
+        body_prefix='\n'.join([
+            f"for (int i = 1; i < 8; ++i) {{ if ({cg.cn_arg(n2_header_struct.name)}->dim[i] > INT_MAX) return 0; }}",
+            f"{cg.cn_arg(n1_header_struct.name)}->sizeof_hdr = 348;",
+            f'memcpy(&{cg.cn_arg(n1_header_struct.name)}->magic, "n+1\\0", 4);',
+            f"for (int i = 0; i < 36; ++i) {{ ((char *) &{cg.cn_arg(n1_header_struct.name)}->data_type)[i] = 0; }}"
+        ]),
+        skip_field_names=["sizeof_hdr", "magic"]
+    ).write(buf)
 
     return buf
 

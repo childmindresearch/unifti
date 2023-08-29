@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 
 
 C_INDENT = "  "
-C_PREFIX = "cnifti"
+C_PREFIX = "unifti"
 C_PREFIX_UP = C_PREFIX.upper()
 
 

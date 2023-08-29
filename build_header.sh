@@ -1,1 +1,1 @@
-python3 -m scripts.build
+python -m scripts.build
