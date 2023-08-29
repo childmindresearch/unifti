@@ -4,7 +4,7 @@ Minimal header only NIfTI definitions and utilities.
 
 ## Features
 
-- Captures entire NifTI 1.1 and 2 standard
+- Captures entire NifTI 1.1 and 2 standard and extension codes (e.g. CIFTI)
 - Portable & (single) header only
 - Zero (heap) allocations
 - Comprehensive documentation for all definitions
